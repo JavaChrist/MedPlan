@@ -1,0 +1,15 @@
+# Fichiers générés automatiquement par next-pwa
+public/sw.js
+public/workbox-*.js
+
+# Dossiers de build
+.next/
+out/
+dist/
+
+# Fichiers de dépendances
+node_modules/
+
+# Fichiers de configuration
+*.config.js
+*.config.ts 
