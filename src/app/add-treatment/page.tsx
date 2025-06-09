@@ -34,7 +34,14 @@ export default function AddTreatmentPage() {
     duration: 7,
     startTime: '08:00',
     endTime: '22:00',
-    startDate: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
+    startDate: (() => {
+      // Utiliser la date locale pour éviter les problèmes de fuseau horaire
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    })(), // Format YYYY-MM-DD en heure locale
     notes: ''
   });
 
@@ -93,9 +100,11 @@ export default function AddTreatmentPage() {
 
     const selectedDate = new Date(formData.startDate);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Utiliser les dates locales pour la comparaison
+    const selectedLocalDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+    const todayLocalDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    if (selectedDate < today) {
+    if (selectedLocalDate < todayLocalDate) {
       newErrors.startDate = 'La date de début ne peut pas être dans le passé';
     }
 
@@ -131,7 +140,7 @@ export default function AddTreatmentPage() {
         endDate: endDate,
         isActive: true,
         notes: formData.notes || undefined,
-        userId: '' // sera rempli automatiquement par la fonction
+        userId: '' // sera rempli automatiquement par la fonction avec l'ID stable
       });
 
       // Programmer les notifications pour les premiers jours si autorisées
@@ -144,9 +153,10 @@ export default function AddTreatmentPage() {
 
         // Programmer pour aujourd'hui si la date de début est aujourd'hui
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const todayLocalDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startLocalDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 
-        if (startDate.getTime() === today.getTime()) {
+        if (startLocalDate.getTime() === todayLocalDate.getTime()) {
           times.forEach(time => {
             const [hours, minutes] = time.split(':').map(Number);
             const scheduledTime = new Date();

@@ -197,6 +197,27 @@ export default function HistoryPage() {
                   <div className="text-sm text-orange-800">Doses retardées</div>
                 </div>
               </div>
+
+              {/* Note explicative pour 0% */}
+              {stats.adherenceRate === 0 && stats.totalDoses > 0 && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <span className="text-2xl">ℹ️</span>
+                    <div>
+                      <h4 className="font-medium text-blue-900 mb-2">À propos des statistiques</h4>
+                      <p className="text-blue-800 text-sm">
+                        Vos statistiques affichent <strong>0%</strong> car le système de validation des prises
+                        n'est pas encore implémenté. Les doses sont calculées en fonction de vos traitements
+                        programmés, mais vous ne pouvez pas encore marquer les prises comme "effectuées"
+                        dans l'application.
+                      </p>
+                      <p className="text-blue-700 text-xs mt-2">
+                        💡 <strong>Astuce :</strong> Cette fonctionnalité sera ajoutée prochainement pour un suivi complet !
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Graphique de répartition */}

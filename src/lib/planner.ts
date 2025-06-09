@@ -297,7 +297,7 @@ export function generateTodaySchedule(treatments: FirebaseTreatment[], date: Dat
   const schedule: MedicationDose[] = [];
   let doseIdCounter = 1;
 
-  treatments.forEach(treatment => {
+  treatments.forEach((treatment, index) => {
     // Vérifier si le traitement est actif pour cette date
     const treatmentDate = new Date(date);
     treatmentDate.setHours(0, 0, 0, 0);

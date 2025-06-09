@@ -6,7 +6,7 @@ import Timeline from '@/components/Timeline';
 import { useNotificationManager } from '@/components/NotificationManager';
 import NotificationManager from '@/components/NotificationManager';
 import { getUserTreatments } from '@/lib/firebase';
-import { generateTodaySchedule, type MedicationDose } from '@/lib/planner';
+import { generateTodaySchedule, type MedicationDose, type FirebaseTreatment } from '@/lib/planner';
 import {
   ArrowLeftIcon,
   DashboardIcon,
@@ -17,12 +17,16 @@ import {
   PlusIcon,
   ChartIcon,
   SettingsIcon,
-  PillIcon
+  PillIcon,
+  CalendarIcon,
+  ArrowRightIcon
 } from '@/components/Icons';
 
 export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [doses, setDoses] = useState<MedicationDose[]>([]);
+  const [allTreatments, setAllTreatments] = useState<FirebaseTreatment[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const { scheduleMedicationReminder, hasPermission } = useNotificationManager();
 
@@ -36,21 +40,58 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadUserTreatments = async () => {
       try {
+        console.log('🔍 Dashboard: Début du chargement des traitements...');
+
+        // Debug: voir ce qui est dans localStorage
+        const storedTreatments = localStorage.getItem('treatments');
+        const stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+        console.log('📦 localStorage treatments:', storedTreatments);
+        console.log('👤 ID utilisateur stable:', stableUserId);
+
         const treatments = await getUserTreatments();
+        console.log('✅ Traitements récupérés pour le dashboard:', treatments);
+
+        setAllTreatments(treatments);
+
         if (treatments.length > 0) {
-          const today = new Date();
-          const schedule = generateTodaySchedule(treatments, today);
+          const schedule = generateTodaySchedule(treatments, selectedDate);
+          console.log('📅 Planning généré pour', selectedDate.toLocaleDateString('fr-FR'), ':', schedule);
           setDoses(schedule);
+        } else {
+          console.log('⚠️ Aucun traitement trouvé pour cet utilisateur');
+          setDoses([]);
         }
       } catch (error) {
-        console.error('Erreur lors du chargement des traitements:', error);
+        console.error('❌ Erreur lors du chargement des traitements:', error);
       } finally {
         setLoading(false);
       }
     };
 
     loadUserTreatments();
-  }, []);
+  }, [selectedDate]); // Recharger quand la date sélectionnée change
+
+  // Fonctions de navigation par jour
+  const goToPreviousDay = () => {
+    const previousDay = new Date(selectedDate);
+    previousDay.setDate(previousDay.getDate() - 1);
+    setSelectedDate(previousDay);
+  };
+
+  const goToNextDay = () => {
+    const nextDay = new Date(selectedDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    setSelectedDate(nextDay);
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
+
+  const isToday = () => {
+    const today = new Date();
+    return selectedDate.toDateString() === today.toDateString();
+  };
 
   // Gestionnaire d'actions sur les doses
   const handleDoseAction = (dose: MedicationDose, action: 'take' | 'skip' | 'delay') => {
@@ -98,6 +139,25 @@ export default function DashboardPage() {
   };
 
   const adherenceRate = stats.total > 0 ? Math.round((stats.taken / stats.total) * 100) : 0;
+
+  // Fonction pour identifier les traitements à venir
+  const getUpcomingTreatments = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const nextWeek = new Date(today);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+
+    return allTreatments.filter(treatment => {
+      const startDate = new Date(treatment.startDate);
+      startDate.setHours(0, 0, 0, 0);
+
+      // Traitement qui commence dans les 7 prochains jours (mais pas aujourd'hui)
+      return startDate > today && startDate <= nextWeek;
+    }).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+  };
+
+  const upcomingTreatments = getUpcomingTreatments();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -222,6 +282,62 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* Navigation par jour */}
+            <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100 mb-8">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={goToPreviousDay}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeftIcon className="w-4 h-4" />
+                  <span>Jour précédent</span>
+                </button>
+
+                <div className="text-center">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    {selectedDate.toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </h2>
+                  {!isToday() && (
+                    <button
+                      onClick={goToToday}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+                    >
+                      Retour à aujourd'hui
+                    </button>
+                  )}
+                  {isToday() && (
+                    <p className="text-sm text-green-600 mt-1">📅 Aujourd'hui</p>
+                  )}
+                </div>
+
+                <button
+                  onClick={goToNextDay}
+                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <span>Jour suivant</span>
+                  <ArrowRightIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Indicateur du statut du jour */}
+              <div className="mt-3 text-center">
+                {doses.length > 0 ? (
+                  <p className="text-sm text-gray-600">
+                    {doses.length} dose{doses.length > 1 ? 's' : ''} programmée{doses.length > 1 ? 's' : ''} ce jour
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    Aucune dose programmée pour ce jour
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Actions rapides</h2>
@@ -267,6 +383,57 @@ export default function DashboardPage() {
               onDoseAction={handleDoseAction}
               className="mb-8"
             />
+
+            {/* Section Traitements à venir */}
+            {upcomingTreatments.length > 0 && (
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 mb-8">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <CalendarIcon className="w-5 h-5 text-blue-600" />
+                  <span>Traitements à venir (7 prochains jours)</span>
+                </h2>
+                <div className="space-y-3">
+                  {upcomingTreatments.map(treatment => {
+                    const startDate = new Date(treatment.startDate);
+                    const endDate = new Date(treatment.endDate);
+                    const daysUntilStart = Math.ceil((startDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+
+                    return (
+                      <div key={treatment.id} className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <PillIcon className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-medium text-gray-900">{treatment.name}</h3>
+                            <p className="text-sm text-gray-600">
+                              {treatment.dosage} • {treatment.frequency} fois par jour
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {treatment.duration} jour{treatment.duration > 1 ? 's' : ''}
+                              ({startDate.toLocaleDateString('fr-FR')} → {endDate.toLocaleDateString('fr-FR')})
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium text-blue-600">
+                            Dans {daysUntilStart} jour{daysUntilStart > 1 ? 's' : ''}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {startDate.toLocaleDateString('fr-FR', { weekday: 'long' })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-700">
+                    💡 <strong>Info :</strong> Ces traitements n'apparaîtront dans votre planning quotidien
+                    qu'à partir de leur date de début.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Conseils et encouragements */}
             {adherenceRate >= 80 && (

@@ -583,14 +583,24 @@ export async function addTreatment(
   try {
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !db) {
-      // Mode local : générer un ID unique et sauvegarder dans localStorage
+      // Mode local : utiliser l'ID utilisateur stable
+
+      // Récupérer l'ID utilisateur stable (même logique qu'avec les préférences)
+      let stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+      if (!stableUserId) {
+        // Si pas d'ID stable, en créer un
+        stableUserId = 'anonymous-local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('medplan_anonymous_user_id', stableUserId);
+        console.log('🆕 Nouvel utilisateur anonyme créé pour traitement:', stableUserId);
+      }
+
       const treatmentId = 'treatment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      const userId = 'anonymous-' + Date.now();
 
       const treatment: Treatment = {
         id: treatmentId,
         ...treatmentData,
-        userId: userId,
+        userId: stableUserId, // Utiliser l'ID stable !
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -600,7 +610,7 @@ export async function addTreatment(
       existingTreatments.push(treatment);
       localStorage.setItem('treatments', JSON.stringify(existingTreatments));
 
-      console.log('✅ Traitement ajouté en mode local:', treatmentId);
+      console.log('✅ Traitement ajouté en mode local:', treatmentId, 'pour utilisateur:', stableUserId);
       return treatmentId;
     }
 
@@ -639,11 +649,25 @@ export async function getUserTreatments(userId?: string): Promise<Treatment[]> {
   try {
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !db) {
-      // Mode local : récupérer depuis localStorage
+      // Mode local : récupérer depuis localStorage avec l'ID utilisateur stable
+
+      // Récupérer l'ID utilisateur stable
+      const stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+      if (!stableUserId) {
+        console.log('ℹ️ Aucun utilisateur stable trouvé, retour liste vide');
+        return [];
+      }
+
       const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
-      const activeTreatments = treatments.filter(t => t.isActive !== false);
-      console.log(`✅ ${activeTreatments.length} traitements récupérés en mode local`);
-      return activeTreatments;
+
+      // Filtrer par utilisateur ET statut actif
+      const userTreatments = treatments.filter(t =>
+        t.userId === stableUserId && t.isActive !== false
+      );
+
+      console.log(`✅ ${userTreatments.length} traitements récupérés en mode local pour utilisateur:`, stableUserId);
+      return userTreatments;
     }
 
     // Mode Firebase - userId est requis
@@ -718,10 +742,21 @@ export async function deleteTreatment(treatmentId: string): Promise<void> {
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !db) {
       // Mode local : supprimer du localStorage
+      const stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+      if (!stableUserId) {
+        throw new Error('Utilisateur non identifié');
+      }
+
       const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
-      const filteredTreatments = treatments.filter(t => t.id !== treatmentId);
+
+      // Supprimer seulement les traitements de l'utilisateur actuel
+      const filteredTreatments = treatments.filter(t =>
+        !(t.id === treatmentId && t.userId === stableUserId)
+      );
+
       localStorage.setItem('treatments', JSON.stringify(filteredTreatments));
-      console.log('✅ Traitement supprimé en mode local');
+      console.log('✅ Traitement supprimé en mode local pour utilisateur:', stableUserId);
       return;
     }
 
@@ -739,10 +774,22 @@ export async function deleteTreatment(treatmentId: string): Promise<void> {
  */
 export async function clearAllTreatments(): Promise<void> {
   try {
-    // En mode local : vider localStorage
+    // En mode local : supprimer seulement les traitements de l'utilisateur actuel
     if (!isFirebaseConfigured || !db) {
-      localStorage.removeItem('treatments');
-      console.log('✅ Tous les traitements supprimés en mode local');
+      const stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+      if (!stableUserId) {
+        console.log('ℹ️ Aucun utilisateur stable, rien à supprimer');
+        return;
+      }
+
+      const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
+
+      // Garder seulement les traitements des autres utilisateurs
+      const otherUsersTreatments = treatments.filter(t => t.userId !== stableUserId);
+
+      localStorage.setItem('treatments', JSON.stringify(otherUsersTreatments));
+      console.log('✅ Tous les traitements supprimés en mode local pour utilisateur:', stableUserId);
       return;
     }
 
@@ -957,32 +1004,52 @@ export async function getAdherenceStats(
   try {
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !db) {
-      // Mode local : calculer des statistiques de base à partir des traitements
-      console.log('📊 Calcul des statistiques en mode local');
+      // Mode local : calculer les vraies statistiques à partir des traitements
+      console.log('📊 Calcul des statistiques réelles en mode local');
 
       const treatments = await getUserTreatments();
-      let totalDoses = 0;
-      let takenDoses = 0;
-      let missedDoses = 0;
-      let delayedDoses = 0;
 
-      // Calculer une estimation basée sur les traitements actifs
-      const daysDiff = startDate && endDate ?
-        Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 7;
+      if (treatments.length === 0) {
+        return {
+          totalDoses: 0,
+          takenDoses: 0,
+          missedDoses: 0,
+          delayedDoses: 0,
+          adherenceRate: 0
+        };
+      }
+
+      let totalDoses = 0;
+
+      // Calculer le nombre réel de doses sur la période demandée
+      const periodStart = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const periodEnd = endDate || new Date();
 
       treatments.forEach(treatment => {
-        // Estimer le nombre de doses sur la période
-        const treatmentDoses = treatment.frequency * daysDiff;
-        totalDoses += treatmentDoses;
+        const treatmentStart = new Date(treatment.startDate);
+        const treatmentEnd = new Date(treatment.endDate);
 
-        // Pour la démo, on simule quelques prises réussies
-        const successRate = Math.random() * 0.4 + 0.6; // Entre 60% et 100%
-        takenDoses += Math.floor(treatmentDoses * successRate);
-        missedDoses += Math.floor(treatmentDoses * (1 - successRate) * 0.7);
-        delayedDoses += treatmentDoses - Math.floor(treatmentDoses * successRate) - Math.floor(treatmentDoses * (1 - successRate) * 0.7);
+        // Calculer l'intersection entre la période demandée et la période du traitement
+        const effectiveStart = new Date(Math.max(periodStart.getTime(), treatmentStart.getTime()));
+        const effectiveEnd = new Date(Math.min(periodEnd.getTime(), treatmentEnd.getTime()));
+
+        // Si les dates se chevauchent
+        if (effectiveStart <= effectiveEnd) {
+          const daysDiff = Math.ceil((effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          const dosesForPeriod = treatment.frequency * daysDiff;
+          totalDoses += dosesForPeriod;
+        }
       });
 
-      const adherenceRate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 0;
+      // Pour le moment, puisqu'on n'a pas encore de système de validation des prises,
+      // on considère toutes les doses comme "à venir" (non prises)
+      const takenDoses = 0; // Aucune prise validée pour l'instant
+      const missedDoses = 0; // Aucune dose manquée enregistrée
+      const delayedDoses = 0; // Aucune dose retardée enregistrée
+
+      const adherenceRate = 0; // 0% car aucune prise n'a été validée
+
+      console.log(`📈 Statistiques calculées - Total: ${totalDoses}, Prises: ${takenDoses}, Manquées: ${missedDoses}, Retardées: ${delayedDoses}`);
 
       return {
         totalDoses,
