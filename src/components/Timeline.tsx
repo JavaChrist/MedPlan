@@ -1,17 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-
-// Interface pour définir une prise de médicament
-export interface MedicationDose {
-  id: string;
-  time: string; // Format HH:mm
-  medicationName: string;
-  dosage?: string;
-  status: 'upcoming' | 'taken' | 'missed' | 'delayed';
-  takenAt?: string; // Heure réelle de prise si différente
-  notes?: string;
-}
+import { CheckIcon, XIcon, WarningIcon, ClockIcon, CalendarIcon } from './Icons';
+import { type MedicationDose } from '@/lib/planner';
 
 // Interface pour les props du composant Timeline
 interface TimelineProps {
@@ -36,7 +27,7 @@ function StatusIndicator({ status, isActive = false }: StatusIndicatorProps) {
           bgColor: 'bg-blue-100',
           ringColor: 'ring-blue-300',
           iconColor: 'text-blue-600',
-          icon: '⏰',
+          icon: <ClockIcon className="w-5 h-5" />,
           label: 'À venir'
         };
       case 'taken':
@@ -44,7 +35,7 @@ function StatusIndicator({ status, isActive = false }: StatusIndicatorProps) {
           bgColor: 'bg-green-100',
           ringColor: 'ring-green-300',
           iconColor: 'text-green-600',
-          icon: '✅',
+          icon: <CheckIcon className="w-5 h-5" />,
           label: 'Pris'
         };
       case 'missed':
@@ -52,7 +43,7 @@ function StatusIndicator({ status, isActive = false }: StatusIndicatorProps) {
           bgColor: 'bg-red-100',
           ringColor: 'ring-red-300',
           iconColor: 'text-red-600',
-          icon: '❌',
+          icon: <XIcon className="w-5 h-5" />,
           label: 'Oublié'
         };
       case 'delayed':
@@ -60,7 +51,7 @@ function StatusIndicator({ status, isActive = false }: StatusIndicatorProps) {
           bgColor: 'bg-orange-100',
           ringColor: 'ring-orange-300',
           iconColor: 'text-orange-600',
-          icon: '⚠️',
+          icon: <WarningIcon className="w-5 h-5" />,
           label: 'En retard'
         };
       default:
@@ -86,9 +77,9 @@ function StatusIndicator({ status, isActive = false }: StatusIndicatorProps) {
       `}
       title={config.label}
     >
-      <span className={`text-lg ${config.iconColor}`}>
+      <div className={config.iconColor}>
         {config.icon}
-      </span>
+      </div>
     </div>
   );
 }
@@ -268,8 +259,9 @@ export default function Timeline({
       {/* En-tête avec statistiques */}
       <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-t-xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold flex items-center">
-            📅 Planning du jour
+          <h2 className="text-xl font-bold flex items-center space-x-2">
+            <CalendarIcon className="w-6 h-6 text-white" />
+            <span>Planning du jour</span>
           </h2>
           <div className="text-right">
             <p className="text-blue-100 text-sm">
@@ -328,7 +320,7 @@ export default function Timeline({
           <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-green-800 text-center">
               🎉 Félicitations ! Vous avez pris {stats.taken} dose{stats.taken > 1 ? 's' : ''} aujourd'hui.
-              {stats.total > 0 && ` Taux d'adhérence: ${Math.round((stats.taken / stats.total) * 100)}%`}
+              {stats.total > 0 && ` Taux d&apos;adhérence: ${Math.round((stats.taken / stats.total) * 100)}%`}
             </p>
           </div>
         )}
@@ -337,49 +329,15 @@ export default function Timeline({
   );
 }
 
-// Hook utilitaire pour générer des données de test
-export function useTimelineData(): MedicationDose[] {
-  return useMemo(() => [
-    {
-      id: '1',
-      time: '08:00',
-      medicationName: 'Paracétamol',
-      dosage: '500mg',
-      status: 'taken',
-      takenAt: '08:05',
-      notes: 'Pris avec le petit-déjeuner'
-    },
-    {
-      id: '2',
-      time: '12:30',
-      medicationName: 'Vitamine D',
-      dosage: '1000 UI',
-      status: 'missed',
-      notes: 'Oublié pendant le déjeuner'
-    },
-    {
-      id: '3',
-      time: '15:00',
-      medicationName: 'Aspirine',
-      dosage: '100mg',
-      status: 'upcoming'
-    },
-    {
-      id: '4',
-      time: '20:00',
-      medicationName: 'Magnésium',
-      dosage: '2 comprimés',
-      status: 'upcoming',
-      notes: 'À prendre après le dîner'
-    }
-  ], []);
-}
+// Les données de démonstration ont été supprimées
+// L'application utilise maintenant les vrais traitements des utilisateurs
 
 /*
 === EXEMPLES D'UTILISATION ===
 
 // Utilisation de base
-import Timeline, { MedicationDose } from '@/components/Timeline';
+import Timeline from '@/components/Timeline';
+import { type MedicationDose } from '@/lib/planner';
 
 const doses: MedicationDose[] = [
   {
@@ -399,15 +357,26 @@ const doses: MedicationDose[] = [
   }}
 />
 
-// Avec données de test
-import Timeline, { useTimelineData } from '@/components/Timeline';
+// Avec données réelles
+import Timeline from '@/components/Timeline';
+import { getUserTreatments } from '@/lib/firebase';
+import { generateTodaySchedule, type MedicationDose } from '@/lib/planner';
 
 function MyComponent() {
-  const testDoses = useTimelineData();
+  const [doses, setDoses] = useState<MedicationDose[]>([]);
+  
+  useEffect(() => {
+    const loadDoses = async () => {
+      const treatments = await getUserTreatments();
+      const schedule = generateTodaySchedule(treatments, new Date());
+      setDoses(schedule);
+    };
+    loadDoses();
+  }, []);
   
   return (
     <Timeline 
-      doses={testDoses}
+      doses={doses}
       currentTime={new Date()}
       className="max-w-2xl mx-auto"
     />

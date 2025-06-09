@@ -7,6 +7,16 @@ import { addTreatment, onAuthChange } from '@/lib/firebase';
 import { generateSchedule } from '@/lib/planner';
 import { useNotificationManager } from '@/components/NotificationManager';
 import type { User } from 'firebase/auth';
+import {
+  ArrowLeftIcon,
+  PlusIcon,
+  LockIcon,
+  MailIcon,
+  CalendarIcon,
+  LightbulbIcon,
+  PillIcon,
+  SpinnerIcon
+} from '@/components/Icons';
 
 export default function AddTreatmentPage() {
   const router = useRouter();
@@ -78,7 +88,7 @@ export default function AddTreatmentPage() {
     }
 
     if (formData.startTime >= formData.endTime) {
-      newErrors.timeRange = 'L\'heure de début doit être avant l\'heure de fin';
+      newErrors.timeRange = 'L&apos;heure de début doit être avant l&apos;heure de fin';
     }
 
     const selectedDate = new Date(formData.startDate);
@@ -110,7 +120,7 @@ export default function AddTreatmentPage() {
       endDate.setDate(startDate.getDate() + formData.duration - 1);
 
       // Ajouter le traitement à Firebase
-      const treatmentId = await addTreatment({
+      await addTreatment({
         name: formData.name,
         dosage: formData.dosage,
         frequency: formData.frequency,
@@ -153,9 +163,9 @@ export default function AddTreatmentPage() {
       // Rediriger vers le dashboard
       router.push('/dashboard?success=treatment-added');
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur ajout traitement:', error);
-      setErrors({ submit: error.message || 'Erreur lors de l\'ajout du traitement' });
+      setErrors({ submit: error instanceof Error ? error.message : 'Erreur lors de l&apos;ajout du traitement' });
     } finally {
       setIsLoading(false);
     }
@@ -190,7 +200,7 @@ export default function AddTreatmentPage() {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="bg-white rounded-xl shadow-lg p-8 text-center max-w-md">
           <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-white text-2xl">🔒</span>
+            <LockIcon className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Connexion requise</h2>
           <p className="text-gray-600 mb-6">
@@ -200,16 +210,18 @@ export default function AddTreatmentPage() {
           <div className="space-y-3">
             <button
               onClick={handleGoToSignIn}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-colors"
+              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-colors flex items-center justify-center space-x-2"
             >
-              🔑 Se connecter
+              <LockIcon className="w-5 h-5" />
+              <span>Se connecter</span>
             </button>
 
             <button
               onClick={handleGoToSignIn}
-              className="w-full bg-blue-100 text-blue-800 px-6 py-3 rounded-lg hover:bg-blue-200 transition-colors"
+              className="w-full bg-blue-100 text-blue-800 px-6 py-3 rounded-lg hover:bg-blue-200 transition-colors flex items-center justify-center space-x-2"
             >
-              📧 Créer un compte
+              <MailIcon className="w-5 h-5" />
+              <span>Créer un compte</span>
             </button>
 
             <Link
@@ -231,19 +243,20 @@ export default function AddTreatmentPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800">
-                ← Retour au tableau de bord
+              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800 flex items-center space-x-1">
+                <ArrowLeftIcon className="w-4 h-4" />
+                <span>Retour au tableau de bord</span>
               </Link>
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold">➕</span>
+                  <PlusIcon className="w-5 h-5 text-white" />
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Nouveau traitement</h1>
               </div>
             </div>
             {/* Indicateur utilisateur connecté */}
             <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <span>{user.isAnonymous ? '🔒' : '📧'}</span>
+              {user.isAnonymous ? <LockIcon className="w-4 h-4" /> : <MailIcon className="w-4 h-4" />}
               <span>{user.isAnonymous ? 'Compte anonyme' : user.email}</span>
             </div>
           </div>
@@ -387,7 +400,10 @@ export default function AddTreatmentPage() {
             {/* Aperçu des horaires */}
             {formData.frequency && formData.startTime && formData.endTime && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-3">📅 Aperçu des horaires calculés :</h4>
+                <h4 className="font-medium text-blue-900 mb-3 flex items-center space-x-2">
+                  <CalendarIcon className="w-5 h-5" />
+                  <span>Aperçu des horaires calculés :</span>
+                </h4>
                 <div className="flex flex-wrap gap-2">
                   {previewTimes().map((time, index) => (
                     <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
@@ -396,7 +412,7 @@ export default function AddTreatmentPage() {
                   ))}
                 </div>
                 <p className="text-blue-700 text-sm mt-2">
-                  ⚡ Les horaires sont calculés automatiquement par l'IA pour une répartition optimale
+                  ⚡ Les horaires sont calculés automatiquement par l&apos;IA pour une répartition optimale
                 </p>
               </div>
             )}
@@ -440,12 +456,15 @@ export default function AddTreatmentPage() {
                 className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
-                  <span className="flex items-center justify-center">
-                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                    Ajout en cours...
+                  <span className="flex items-center justify-center space-x-2">
+                    <SpinnerIcon className="w-4 h-4 text-white" />
+                    <span>Ajout en cours...</span>
                   </span>
                 ) : (
-                  '💊 Ajouter le traitement'
+                  <span className="flex items-center justify-center space-x-2">
+                    <PillIcon className="w-5 h-5" />
+                    <span>Ajouter le traitement</span>
+                  </span>
                 )}
               </button>
             </div>
@@ -454,7 +473,10 @@ export default function AddTreatmentPage() {
 
         {/* Conseils */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
-          <h3 className="font-semibold text-blue-800 mb-3">💡 Conseils pour un traitement efficace</h3>
+          <h3 className="font-semibold text-blue-800 mb-3 flex items-center space-x-2">
+            <LightbulbIcon className="w-5 h-5" />
+            <span>Conseils pour un traitement efficace</span>
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-700">
             <div className="flex items-start space-x-2">
               <span className="text-blue-600">•</span>
@@ -466,7 +488,7 @@ export default function AddTreatmentPage() {
             </div>
             <div className="flex items-start space-x-2">
               <span className="text-blue-600">•</span>
-              <p>Consultez votre médecin avant d'arrêter ou modifier un traitement</p>
+              <p>Consultez votre médecin avant d&apos;arrêter ou modifier un traitement</p>
             </div>
             <div className="flex items-start space-x-2">
               <span className="text-blue-600">•</span>

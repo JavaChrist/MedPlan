@@ -5,6 +5,20 @@ import Link from 'next/link';
 import { useNotificationManager } from '@/components/NotificationManager';
 import { onAuthChange, getUserProfile, updateUserProfile, signOutUser } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
+import {
+  ArrowLeftIcon,
+  SettingsIcon,
+  BellIcon,
+  UserIcon,
+  ShieldIcon,
+  DoorIcon,
+  SaveIcon,
+  SpinnerIcon,
+  DashboardIcon,
+  PlusIcon,
+  ChartIcon
+} from '@/components/Icons';
+import FirebaseStatus from '@/components/FirebaseStatus';
 
 interface UserPreferences {
   notifications: boolean;
@@ -51,8 +65,8 @@ export default function SettingsPage() {
       if (profile && profile.preferences) {
         setPreferences(profile.preferences);
       }
-    } catch (error) {
-      console.error('Erreur chargement préférences:', error);
+    } catch {
+      console.error('Erreur chargement préférences');
     }
   };
 
@@ -66,16 +80,32 @@ export default function SettingsPage() {
     try {
       await updateUserProfile(user.uid, { preferences });
       setMessage({ type: 'success', text: 'Préférences sauvegardées avec succès !' });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Erreur sauvegarde:', error);
-      setMessage({ type: 'error', text: 'Erreur lors de la sauvegarde des préférences' });
+
+      const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la sauvegarde des préférences';
+
+      // Messages d'erreur plus explicites
+      if (errorMessage.includes('localement')) {
+        setMessage({
+          type: 'success',
+          text: 'Préférences sauvegardées localement - seront synchronisées à la reconnexion'
+        });
+      } else if (errorMessage.includes('connexion')) {
+        setMessage({
+          type: 'error',
+          text: 'Problème de connexion - vérifiez votre réseau et les paramètres Firebase'
+        });
+      } else {
+        setMessage({ type: 'error', text: errorMessage });
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   // Gestion des changements de préférences
-  const handlePreferenceChange = (key: keyof UserPreferences, value: any) => {
+  const handlePreferenceChange = (key: keyof UserPreferences, value: boolean | number | string) => {
     setPreferences(prev => ({
       ...prev,
       [key]: value
@@ -120,7 +150,7 @@ export default function SettingsPage() {
             href="/"
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Retour à l'accueil
+            Retour à l&apos;accueil
           </Link>
         </div>
       </div>
@@ -134,12 +164,13 @@ export default function SettingsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800">
-                ← Retour au tableau de bord
+              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800 flex items-center space-x-1">
+                <ArrowLeftIcon className="w-4 h-4" />
+                <span>Retour au tableau de bord</span>
               </Link>
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold">⚙️</span>
+                  <SettingsIcon className="w-5 h-5 text-white" />
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
               </div>
@@ -150,6 +181,9 @@ export default function SettingsPage() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* État Firebase */}
+        <FirebaseStatus className="mb-6" />
+
         {/* Message de retour */}
         {message && (
           <div className={`rounded-xl p-4 mb-6 ${message.type === 'success'
@@ -163,7 +197,10 @@ export default function SettingsPage() {
         {/* Notifications */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 mb-8">
           <div className="bg-gradient-to-r from-orange-500 to-red-600 px-6 py-4 rounded-t-xl">
-            <h2 className="text-xl font-bold text-white">🔔 Notifications</h2>
+            <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+              <BellIcon className="w-6 h-6" />
+              <span>Notifications</span>
+            </h2>
             <p className="text-orange-100">Gérez vos rappels et alertes</p>
           </div>
 
@@ -290,7 +327,10 @@ export default function SettingsPage() {
         {/* Informations de compte */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 mb-8">
           <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-4 rounded-t-xl">
-            <h2 className="text-xl font-bold text-white">👤 Compte utilisateur</h2>
+            <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+              <UserIcon className="w-6 h-6" />
+              <span>Compte utilisateur</span>
+            </h2>
             <p className="text-blue-100">Informations et gestion du compte</p>
           </div>
 
@@ -313,9 +353,10 @@ export default function SettingsPage() {
             <div className="border-t border-gray-200 pt-4">
               <button
                 onClick={handleSignOut}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
               >
-                🚪 Se déconnecter
+                <DoorIcon className="w-5 h-5" />
+                <span>Se déconnecter</span>
               </button>
             </div>
           </div>
@@ -324,7 +365,10 @@ export default function SettingsPage() {
         {/* Données et confidentialité */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 mb-8">
           <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-4 rounded-t-xl">
-            <h2 className="text-xl font-bold text-white">🛡️ Données & Confidentialité</h2>
+            <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+              <ShieldIcon className="w-6 h-6" />
+              <span>Données & Confidentialité</span>
+            </h2>
             <p className="text-green-100">Gestion de vos données personnelles</p>
           </div>
 
@@ -373,12 +417,12 @@ export default function SettingsPage() {
           >
             {isSaving ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <SpinnerIcon className="w-4 h-4 text-white" />
                 <span>Sauvegarde...</span>
               </>
             ) : (
               <>
-                <span>💾</span>
+                <SaveIcon className="w-5 h-5" />
                 <span>Sauvegarder les préférences</span>
               </>
             )}
@@ -393,7 +437,7 @@ export default function SettingsPage() {
               href="/dashboard"
               className="flex items-center justify-center p-3 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
             >
-              <span className="text-xl mr-2">📊</span>
+              <DashboardIcon className="w-5 h-5 text-blue-600 mr-2" />
               <span className="text-blue-800 font-medium">Dashboard</span>
             </Link>
 
@@ -401,7 +445,7 @@ export default function SettingsPage() {
               href="/add-treatment"
               className="flex items-center justify-center p-3 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
             >
-              <span className="text-xl mr-2">➕</span>
+              <PlusIcon className="w-5 h-5 text-blue-600 mr-2" />
               <span className="text-blue-800 font-medium">Nouveau traitement</span>
             </Link>
 
@@ -409,7 +453,7 @@ export default function SettingsPage() {
               href="/history"
               className="flex items-center justify-center p-3 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
             >
-              <span className="text-xl mr-2">📈</span>
+              <ChartIcon className="w-5 h-5 text-blue-600 mr-2" />
               <span className="text-blue-800 font-medium">Historique</span>
             </Link>
           </div>

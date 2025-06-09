@@ -1,18 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   onAuthChange,
   signInWithEmail,
   signUpWithEmail,
-  signOutUser,
-  getUserProfile
+  signOutUser
 } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
 
-export default function ProfilePage() {
+function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get('return');
@@ -59,8 +58,8 @@ export default function ProfilePage() {
 
     try {
       await signInWithEmail(formData.email, formData.password);
-    } catch (error: any) {
-      setErrors({ submit: error.message });
+    } catch (error: unknown) {
+      setErrors({ submit: error instanceof Error ? error.message : 'Erreur de connexion' });
     } finally {
       setIsSubmitting(false);
     }
@@ -74,8 +73,8 @@ export default function ProfilePage() {
 
     try {
       await signUpWithEmail(formData.email, formData.password);
-    } catch (error: any) {
-      setErrors({ submit: error.message });
+    } catch (error: unknown) {
+      setErrors({ submit: error instanceof Error ? error.message : 'Erreur de création de compte' });
     } finally {
       setIsSubmitting(false);
     }
@@ -87,8 +86,8 @@ export default function ProfilePage() {
       await signOutUser();
       setFormData({ email: '', password: '' });
       setAuthMode('signin');
-    } catch (error: any) {
-      setErrors({ submit: error.message });
+    } catch (error: unknown) {
+      setErrors({ submit: error instanceof Error ? error.message : 'Erreur de déconnexion' });
     }
   };
 
@@ -120,7 +119,7 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href={user ? "/dashboard" : "/"} className="text-blue-600 hover:text-blue-800">
-                ← Retour {user ? "au tableau de bord" : "à l'accueil"}
+                ← Retour {user ? "au tableau de bord" : "à l&apos;accueil"}
               </Link>
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
@@ -378,5 +377,20 @@ export default function ProfilePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Chargement du profil...</p>
+        </div>
+      </div>
+    }>
+      <ProfileContent />
+    </Suspense>
   );
 } 

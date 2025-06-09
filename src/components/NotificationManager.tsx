@@ -14,8 +14,8 @@ interface ScheduledNotification {
   timeoutId?: NodeJS.Timeout;
 }
 
-// Interface pour les options de notification
-interface NotificationOptions {
+// Interface pour les options de notification planifiée
+interface ScheduledNotificationOptions {
   title: string;
   body: string;
   scheduledTime: Date;
@@ -116,7 +116,7 @@ export function useNotificationManager() {
   }, [isSupported]);
 
   // Fonction pour afficher une notification immédiate
-  const showNotification = useCallback((title: string, options: NotificationInit = {}) => {
+  const showNotification = useCallback((title: string, options: any = {}) => {
     if (permission !== 'granted') {
       console.warn('❌ Permission de notifications requise');
       return;
@@ -125,9 +125,11 @@ export function useNotificationManager() {
     try {
       // Créer et afficher la notification
       const notification = new Notification(title, {
-        // Utiliser l'icône par défaut du navigateur (plus fiable)
+        // Options améliorées pour plus de visibilité
         tag: 'medplan-reminder',    // Tag pour grouper les notifications
-        requireInteraction: false, // Permet aux notifications de disparaître automatiquement
+        requireInteraction: true,   // Notification reste jusqu'à interaction
+        silent: false,              // Permettre le son
+        renotify: true,            // Rénotifier si même tag
         ...options
       });
 
@@ -141,10 +143,21 @@ export function useNotificationManager() {
 
       notification.onshow = () => {
         console.log('👁️ Notification affichée');
+
+        // Fermeture automatique après 10 secondes si pas d'interaction requise
+        if (!options.requireInteraction) {
+          setTimeout(() => {
+            notification.close();
+          }, 10000);
+        }
       };
 
       notification.onclose = () => {
         console.log('❌ Notification fermée');
+      };
+
+      notification.onerror = (error) => {
+        console.error('💥 Erreur notification:', error);
       };
 
       return notification;
@@ -154,7 +167,7 @@ export function useNotificationManager() {
   }, [permission]);
 
   // Fonction pour planifier une notification à une heure précise
-  const scheduleNotification = useCallback((options: NotificationOptions): string => {
+  const scheduleNotification = useCallback((options: ScheduledNotificationOptions): string => {
     if (permission !== 'granted') {
       console.warn('❌ Permission de notifications requise pour planifier');
       return '';
@@ -314,7 +327,15 @@ export function useNotificationManager() {
         if (saved) {
           const notifications = JSON.parse(saved);
 
-          notifications.forEach((notif: any) => {
+          notifications.forEach((notif: {
+            id: string;
+            title: string;
+            body: string;
+            scheduledTime: string;
+            icon?: string;
+            badge?: string;
+            tag?: string;
+          }) => {
             const scheduledTime = new Date(notif.scheduledTime);
             if (scheduledTime.getTime() > Date.now()) {
               scheduleNotification({
@@ -334,7 +355,7 @@ export function useNotificationManager() {
         console.error('❌ Erreur lors de la restauration des notifications:', error);
       }
     }
-  }, [permission, scheduleNotification]);
+  }, [scheduleNotification]);
 
   // Retourner toutes les fonctions et états utiles
   return {
@@ -453,8 +474,11 @@ export default function NotificationManager({ children, className = '' }: Notifi
             </div>
           </div>
           <button
-            onClick={() => showNotification('Test MedPlan', {
-              body: 'Les notifications fonctionnent correctement ! 🎉'
+            onClick={() => showNotification('🧪 Test MedPlan', {
+              body: 'Les notifications fonctionnent correctement ! 🎉 Cette notification va rester visible jusqu\'à ce que vous cliquiez dessus.',
+              requireInteraction: true,
+              silent: false,
+              icon: '/favicon.ico'
             })}
             className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors"
           >

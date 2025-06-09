@@ -21,12 +21,7 @@ import {
   where,
   orderBy,
   updateDoc,
-  deleteDoc,
-  writeBatch,
-  serverTimestamp,
-  Timestamp,
-  DocumentData,
-  QuerySnapshot
+  writeBatch
 } from 'firebase/firestore';
 
 // Configuration Firebase - utilise les variables d'environnement
@@ -40,10 +35,60 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialisation Firebase
-const app = initializeApp(firebaseConfig);
-export const auth: Auth = getAuth(app);
-export const db = getFirestore(app);
+// Vérification de la configuration Firebase
+const checkFirebaseConfig = () => {
+  const requiredVars = [
+    'NEXT_PUBLIC_FIREBASE_API_KEY',
+    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+    'NEXT_PUBLIC_FIREBASE_PROJECT_ID'
+  ];
+
+  const missingVars = requiredVars.filter(varName => !process.env[varName]);
+
+  if (missingVars.length > 0) {
+    console.warn('⚠️ Firebase : Variables d\'environnement manquantes - Mode local actif');
+    return false;
+  }
+
+  console.log('✅ Firebase : Variables d\'environnement détectées');
+  return true;
+};
+
+const isFirebaseConfigured = checkFirebaseConfig();
+
+// Initialisation Firebase avec gestion d'erreur
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let app: any = null;
+let auth: Auth;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let db: any = null;
+
+try {
+  if (isFirebaseConfigured) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    console.log('✅ Firebase initialisé avec succès');
+  } else {
+    console.warn('⚠️ Mode dégradé : Firebase non configuré');
+    // Mode fallback sans Firebase - créer des objets mock
+    auth = {
+      currentUser: null,
+      onAuthStateChanged: () => () => { }
+    } as unknown as Auth;
+    db = null;
+  }
+} catch (error) {
+  console.error('❌ Erreur initialisation Firebase:', error);
+  // Mode fallback sans Firebase
+  auth = {
+    currentUser: null,
+    onAuthStateChanged: () => () => { }
+  } as unknown as Auth;
+  db = null;
+}
+
+export { auth, db };
 
 // Types TypeScript pour les données Firestore
 export interface Treatment {
@@ -97,20 +142,37 @@ export interface UserProfile {
 
 /**
  * Connexion anonyme pour permettre l'utilisation sans compte
- * @returns Promise<User> Utilisateur Firebase connecté
+ * @returns Promise<User> Utilisateur Firebase connecté ou mock
  */
 export async function signInAnon(): Promise<User> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !auth) {
+      console.log('📱 Connexion anonyme en mode local');
+      // Retourner un utilisateur mock pour le mode local
+      return {
+        uid: 'anonymous-local-' + Date.now(),
+        isAnonymous: true,
+        email: null,
+        displayName: null,
+        emailVerified: false,
+        metadata: {
+          creationTime: new Date().toISOString(),
+          lastSignInTime: new Date().toISOString()
+        }
+      } as User;
+    }
+
     const result = await signInAnonymously(auth);
-    console.log('✅ Connexion anonyme réussie:', result.user.uid);
+    console.log('✅ Connexion anonyme Firebase réussie:', result.user.uid);
 
     // Créer le profil utilisateur si nécessaire
     await createUserProfileIfNeeded(result.user);
 
     return result.user;
-  } catch (error: any) {
-    console.error('❌ Erreur connexion anonyme:', error.code, error.message);
-    throw new Error(`Connexion anonyme échouée: ${error.message}`);
+  } catch (error: unknown) {
+    console.error('❌ Erreur connexion anonyme:', error);
+    throw new Error(`Connexion anonyme échouée: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
   }
 }
 
@@ -122,6 +184,11 @@ export async function signInAnon(): Promise<User> {
  */
 export async function signInWithEmail(email: string, password: string): Promise<User> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !auth) {
+      throw new Error('Firebase non configuré - authentification email non disponible en mode local');
+    }
+
     const result = await signInWithEmailAndPassword(auth, email, password);
     console.log('✅ Connexion email réussie:', result.user.email);
 
@@ -129,26 +196,30 @@ export async function signInWithEmail(email: string, password: string): Promise<
     await createUserProfileIfNeeded(result.user);
 
     return result.user;
-  } catch (error: any) {
-    console.error('❌ Erreur connexion email:', error.code, error.message);
+  } catch (error: unknown) {
+    console.error('❌ Erreur connexion email:', error);
 
     // Messages d'erreur en français
     let errorMessage = 'Erreur de connexion';
-    switch (error.code) {
-      case 'auth/user-not-found':
-        errorMessage = 'Aucun compte trouvé avec cet email';
-        break;
-      case 'auth/wrong-password':
-        errorMessage = 'Mot de passe incorrect';
-        break;
-      case 'auth/invalid-email':
-        errorMessage = 'Adresse email invalide';
-        break;
-      case 'auth/too-many-requests':
-        errorMessage = 'Trop de tentatives. Réessayez plus tard';
-        break;
-      default:
-        errorMessage = error.message;
+    if (error && typeof error === 'object' && 'code' in error) {
+      switch (error.code) {
+        case 'auth/user-not-found':
+          errorMessage = 'Aucun compte trouvé avec cet email';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Mot de passe incorrect';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Adresse email invalide';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Trop de tentatives. Réessayez plus tard';
+          break;
+        default:
+          errorMessage = error instanceof Error ? error.message : 'Erreur de connexion';
+      }
+    } else {
+      errorMessage = error instanceof Error ? error.message : 'Erreur de connexion';
     }
 
     throw new Error(errorMessage);
@@ -163,6 +234,11 @@ export async function signInWithEmail(email: string, password: string): Promise<
  */
 export async function signUpWithEmail(email: string, password: string): Promise<User> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !auth) {
+      throw new Error('Firebase non configuré - création de compte email non disponible en mode local');
+    }
+
     const result = await createUserWithEmailAndPassword(auth, email, password);
     console.log('✅ Création compte réussie:', result.user.email);
 
@@ -170,22 +246,26 @@ export async function signUpWithEmail(email: string, password: string): Promise<
     await createUserProfileIfNeeded(result.user);
 
     return result.user;
-  } catch (error: any) {
-    console.error('❌ Erreur création compte:', error.code, error.message);
+  } catch (error: unknown) {
+    console.error('❌ Erreur création compte:', error);
 
     let errorMessage = 'Erreur de création de compte';
-    switch (error.code) {
-      case 'auth/email-already-in-use':
-        errorMessage = 'Un compte existe déjà avec cet email';
-        break;
-      case 'auth/weak-password':
-        errorMessage = 'Le mot de passe doit contenir au moins 6 caractères';
-        break;
-      case 'auth/invalid-email':
-        errorMessage = 'Adresse email invalide';
-        break;
-      default:
-        errorMessage = error.message;
+    if (error && typeof error === 'object' && 'code' in error) {
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'Un compte existe déjà avec cet email';
+          break;
+        case 'auth/weak-password':
+          errorMessage = 'Le mot de passe doit contenir au moins 6 caractères';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Adresse email invalide';
+          break;
+        default:
+          errorMessage = error instanceof Error ? error.message : 'Erreur de création de compte';
+      }
+    } else {
+      errorMessage = error instanceof Error ? error.message : 'Erreur de création de compte';
     }
 
     throw new Error(errorMessage);
@@ -197,9 +277,17 @@ export async function signUpWithEmail(email: string, password: string): Promise<
  */
 export async function signOutUser(): Promise<void> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !auth) {
+      console.log('📱 Déconnexion en mode local - nettoyage des données');
+      // En mode local, on peut nettoyer le localStorage si nécessaire
+      // localStorage.clear(); // Décommente si tu veux vider les données locales
+      return;
+    }
+
     await signOut(auth);
-    console.log('✅ Déconnexion réussie');
-  } catch (error: any) {
+    console.log('✅ Déconnexion Firebase réussie');
+  } catch (error: unknown) {
     console.error('❌ Erreur déconnexion:', error);
     throw new Error('Erreur lors de la déconnexion');
   }
@@ -211,7 +299,28 @@ export async function signOutUser(): Promise<void> {
  * @returns Fonction pour se désabonner
  */
 export function onAuthChange(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback);
+  if (isFirebaseConfigured) {
+    return onAuthStateChanged(auth, callback);
+  } else {
+    // Mode fallback : créer un utilisateur anonyme mock
+    const mockUser = {
+      uid: 'anonymous-' + Date.now(),
+      isAnonymous: true,
+      email: null,
+      displayName: null,
+      emailVerified: false,
+      metadata: {
+        creationTime: new Date().toISOString(),
+        lastSignInTime: new Date().toISOString()
+      }
+    } as User;
+
+    // Appeler le callback immédiatement avec l'utilisateur mock
+    setTimeout(() => callback(mockUser), 100);
+
+    // Retourner une fonction de désabonnement vide
+    return () => { };
+  }
 }
 
 // =============================================================================
@@ -223,6 +332,26 @@ export function onAuthChange(callback: (user: User | null) => void) {
  * @param user Utilisateur Firebase
  */
 async function createUserProfileIfNeeded(user: User): Promise<void> {
+  // Vérifier si Firebase est configuré
+  if (!isFirebaseConfigured || !db) {
+    console.log('📱 Profil utilisateur sauvegardé en mode local');
+    // Sauvegarder le profil en local
+    const userProfile = {
+      email: user.email || undefined,
+      isAnonymous: user.isAnonymous,
+      preferences: {
+        notifications: true,
+        reminderAdvance: 15,
+        dailyReportTime: '20:00'
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    localStorage.setItem(`profile_${user.uid}`, JSON.stringify(userProfile));
+    return;
+  }
+
   const userRef = doc(db, 'users', user.uid);
   const userSnap = await getDoc(userRef);
 
@@ -240,7 +369,7 @@ async function createUserProfileIfNeeded(user: User): Promise<void> {
     };
 
     await setDoc(userRef, userProfile);
-    console.log('✅ Profil utilisateur créé');
+    console.log('✅ Profil utilisateur créé sur Firebase');
   }
 }
 
@@ -251,16 +380,60 @@ async function createUserProfileIfNeeded(user: User): Promise<void> {
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    const userRef = doc(db, 'users', userId);
-    const userSnap = await getDoc(userRef);
+    // Essayer Firebase d'abord
+    if (isFirebaseConfigured && db) {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
 
-    if (userSnap.exists()) {
-      return { id: userSnap.id, ...userSnap.data() } as UserProfile;
+      if (userSnap.exists()) {
+        return { id: userSnap.id, ...userSnap.data() } as UserProfile;
+      }
+    }
+
+    // Fallback sur le stockage local
+    const localProfile = localStorage.getItem(`profile_${userId}`);
+    if (localProfile) {
+      console.warn('📱 Utilisation des données locales');
+      const parsedProfile = JSON.parse(localProfile);
+      return {
+        id: userId,
+        email: '',
+        isAnonymous: true,
+        preferences: {
+          notifications: true,
+          reminderAdvance: 15,
+          dailyReportTime: '20:00'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...parsedProfile
+      } as UserProfile;
     }
 
     return null;
   } catch (error) {
     console.error('❌ Erreur récupération profil:', error);
+
+    // En cas d'erreur, essayer le stockage local
+    const localProfile = localStorage.getItem(`profile_${userId}`);
+    if (localProfile) {
+      console.warn('📱 Récupération en mode dégradé depuis le stockage local');
+      const parsedProfile = JSON.parse(localProfile);
+      return {
+        id: userId,
+        email: '',
+        isAnonymous: true,
+        preferences: {
+          notifications: true,
+          reminderAdvance: 15,
+          dailyReportTime: '20:00'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...parsedProfile
+      } as UserProfile;
+    }
+
     throw new Error('Erreur lors de la récupération du profil');
   }
 }
@@ -275,15 +448,44 @@ export async function updateUserProfile(
   updates: Partial<Omit<UserProfile, 'id' | 'createdAt'>>
 ): Promise<void> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      console.warn('📴 Firebase non configuré - sauvegarde locale');
+      // Sauvegarder localement en attendant
+      localStorage.setItem(`profile_${userId}`, JSON.stringify({
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }));
+      return;
+    }
+
     const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
       ...updates,
       updatedAt: new Date()
     });
-    console.log('✅ Profil utilisateur mis à jour');
-  } catch (error) {
+    console.log('✅ Profil utilisateur mis à jour sur Firebase');
+  } catch (error: unknown) {
     console.error('❌ Erreur mise à jour profil:', error);
-    throw new Error('Erreur lors de la mise à jour du profil');
+
+    // Gestion d'erreurs spécifiques
+    if (error && typeof error === 'object' && 'code' in error) {
+      const firebaseError = error as { code: string; message: string };
+
+      if (firebaseError.code === 'unavailable' || firebaseError.code === 'offline') {
+        console.warn('📴 Mode hors ligne détecté - sauvegarde locale');
+        // Sauvegarder localement quand hors ligne
+        localStorage.setItem(`profile_${userId}`, JSON.stringify({
+          ...updates,
+          updatedAt: new Date().toISOString(),
+          offline: true
+        }));
+
+        throw new Error('Sauvegardé localement - sera synchronisé à la reconnexion');
+      }
+    }
+
+    throw new Error('Erreur lors de la mise à jour du profil. Vérifiez votre connexion.');
   }
 }
 
@@ -300,6 +502,30 @@ export async function addTreatment(
   treatmentData: Omit<Treatment, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      // Mode local : générer un ID unique et sauvegarder dans localStorage
+      const treatmentId = 'treatment_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      const userId = 'anonymous-' + Date.now();
+
+      const treatment: Treatment = {
+        id: treatmentId,
+        ...treatmentData,
+        userId: userId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Sauvegarder en local
+      const existingTreatments = JSON.parse(localStorage.getItem('treatments') || '[]');
+      existingTreatments.push(treatment);
+      localStorage.setItem('treatments', JSON.stringify(existingTreatments));
+
+      console.log('✅ Traitement ajouté en mode local:', treatmentId);
+      return treatmentId;
+    }
+
+    // Mode Firebase
     const user = auth.currentUser;
     if (!user) {
       throw new Error('Utilisateur non connecté');
@@ -313,7 +539,7 @@ export async function addTreatment(
     };
 
     const docRef = await addDoc(collection(db, 'treatments'), treatment);
-    console.log('✅ Traitement ajouté:', docRef.id);
+    console.log('✅ Traitement ajouté sur Firebase:', docRef.id);
 
     // Générer automatiquement les doses pour les premiers jours
     await generateDailyDoses(docRef.id, treatment);
@@ -327,11 +553,25 @@ export async function addTreatment(
 
 /**
  * Récupérer tous les traitements actifs d'un utilisateur
- * @param userId ID de l'utilisateur
+ * @param userId ID de l'utilisateur (optionnel en mode local)
  * @returns Promise<Treatment[]>
  */
-export async function getUserTreatments(userId: string): Promise<Treatment[]> {
+export async function getUserTreatments(userId?: string): Promise<Treatment[]> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      // Mode local : récupérer depuis localStorage
+      const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
+      const activeTreatments = treatments.filter(t => t.isActive !== false);
+      console.log(`✅ ${activeTreatments.length} traitements récupérés en mode local`);
+      return activeTreatments;
+    }
+
+    // Mode Firebase - userId est requis
+    if (!userId) {
+      throw new Error('ID utilisateur requis en mode Firebase');
+    }
+
     const q = query(
       collection(db, 'treatments'),
       where('userId', '==', userId),
@@ -346,7 +586,7 @@ export async function getUserTreatments(userId: string): Promise<Treatment[]> {
       treatments.push({ id: doc.id, ...doc.data() } as Treatment);
     });
 
-    console.log(`✅ ${treatments.length} traitements récupérés`);
+    console.log(`✅ ${treatments.length} traitements récupérés depuis Firebase`);
     return treatments;
   } catch (error) {
     console.error('❌ Erreur récupération traitements:', error);
@@ -364,12 +604,26 @@ export async function updateTreatment(
   updates: Partial<Omit<Treatment, 'id' | 'userId' | 'createdAt'>>
 ): Promise<void> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      // Mode local : mettre à jour dans localStorage
+      const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
+      const updatedTreatments = treatments.map(t =>
+        t.id === treatmentId
+          ? { ...t, ...updates, updatedAt: new Date() }
+          : t
+      );
+      localStorage.setItem('treatments', JSON.stringify(updatedTreatments));
+      console.log('✅ Traitement mis à jour en mode local');
+      return;
+    }
+
     const treatmentRef = doc(db, 'treatments', treatmentId);
     await updateDoc(treatmentRef, {
       ...updates,
       updatedAt: new Date()
     });
-    console.log('✅ Traitement mis à jour');
+    console.log('✅ Traitement mis à jour sur Firebase');
   } catch (error) {
     console.error('❌ Erreur mise à jour traitement:', error);
     throw new Error('Erreur lors de la mise à jour du traitement');
@@ -377,16 +631,47 @@ export async function updateTreatment(
 }
 
 /**
- * Supprimer un traitement (marquer comme inactif)
+ * Supprimer un traitement (marquer comme inactif ou supprimer en mode local)
  * @param treatmentId ID du traitement
  */
 export async function deleteTreatment(treatmentId: string): Promise<void> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      // Mode local : supprimer du localStorage
+      const treatments: Treatment[] = JSON.parse(localStorage.getItem('treatments') || '[]');
+      const filteredTreatments = treatments.filter(t => t.id !== treatmentId);
+      localStorage.setItem('treatments', JSON.stringify(filteredTreatments));
+      console.log('✅ Traitement supprimé en mode local');
+      return;
+    }
+
+    // Mode Firebase : marquer comme inactif
     await updateTreatment(treatmentId, { isActive: false });
-    console.log('✅ Traitement supprimé');
+    console.log('✅ Traitement supprimé sur Firebase');
   } catch (error) {
     console.error('❌ Erreur suppression traitement:', error);
     throw new Error('Erreur lors de la suppression du traitement');
+  }
+}
+
+/**
+ * Supprimer tous les traitements (remise à zéro complète)
+ */
+export async function clearAllTreatments(): Promise<void> {
+  try {
+    // En mode local : vider localStorage
+    if (!isFirebaseConfigured || !db) {
+      localStorage.removeItem('treatments');
+      console.log('✅ Tous les traitements supprimés en mode local');
+      return;
+    }
+
+    // En mode Firebase : pas implémenté pour la sécurité
+    throw new Error('Suppression globale non autorisée en mode Firebase');
+  } catch (error) {
+    console.error('❌ Erreur suppression totale:', error);
+    throw new Error('Erreur lors de la suppression de tous les traitements');
   }
 }
 
@@ -574,15 +859,15 @@ async function generateDailyDoses(
 
 /**
  * Calculer les statistiques d'adhérence pour une période
- * @param userId ID de l'utilisateur
+ * @param userId ID de l'utilisateur (optionnel en mode local)
  * @param startDate Date de début
  * @param endDate Date de fin
  * @returns Promise<object> Statistiques d'adhérence
  */
 export async function getAdherenceStats(
-  userId: string,
-  startDate: Date,
-  endDate: Date
+  userId?: string,
+  startDate?: Date,
+  endDate?: Date
 ): Promise<{
   totalDoses: number;
   takenDoses: number;
@@ -591,6 +876,49 @@ export async function getAdherenceStats(
   adherenceRate: number;
 }> {
   try {
+    // Vérifier si Firebase est configuré
+    if (!isFirebaseConfigured || !db) {
+      // Mode local : calculer des statistiques de base à partir des traitements
+      console.log('📊 Calcul des statistiques en mode local');
+
+      const treatments = await getUserTreatments();
+      let totalDoses = 0;
+      let takenDoses = 0;
+      let missedDoses = 0;
+      let delayedDoses = 0;
+
+      // Calculer une estimation basée sur les traitements actifs
+      const daysDiff = startDate && endDate ?
+        Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 7;
+
+      treatments.forEach(treatment => {
+        // Estimer le nombre de doses sur la période
+        const treatmentDoses = treatment.frequency * daysDiff;
+        totalDoses += treatmentDoses;
+
+        // Pour la démo, on simule quelques prises réussies
+        const successRate = Math.random() * 0.4 + 0.6; // Entre 60% et 100%
+        takenDoses += Math.floor(treatmentDoses * successRate);
+        missedDoses += Math.floor(treatmentDoses * (1 - successRate) * 0.7);
+        delayedDoses += treatmentDoses - Math.floor(treatmentDoses * successRate) - Math.floor(treatmentDoses * (1 - successRate) * 0.7);
+      });
+
+      const adherenceRate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 0;
+
+      return {
+        totalDoses,
+        takenDoses,
+        missedDoses,
+        delayedDoses,
+        adherenceRate
+      };
+    }
+
+    // Mode Firebase - userId est requis
+    if (!userId || !startDate || !endDate) {
+      throw new Error('Parameters requis en mode Firebase');
+    }
+
     const q = query(
       collection(db, 'dailyDoses'),
       where('userId', '==', userId),

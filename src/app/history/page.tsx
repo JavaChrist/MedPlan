@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getAdherenceStats, getTodaySchedule } from '@/lib/firebase';
+import { getAdherenceStats } from '@/lib/firebase';
 import { onAuthChange } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
 
@@ -25,18 +25,15 @@ export default function HistoryPage() {
   useEffect(() => {
     const unsubscribe = onAuthChange((user) => {
       setUser(user);
-      if (user) {
-        loadStats(user.uid, selectedPeriod);
-      } else {
-        setIsLoading(false);
-      }
+      // En mode local ou avec utilisateur Firebase
+      loadStats(user?.uid, selectedPeriod);
     });
 
     return () => unsubscribe();
   }, [selectedPeriod]);
 
   // Charger les statistiques
-  const loadStats = async (userId: string, period: 'week' | 'month' | 'quarter') => {
+  const loadStats = async (userId: string | undefined, period: 'week' | 'month' | 'quarter') => {
     setIsLoading(true);
     setError('');
 
@@ -56,9 +53,10 @@ export default function HistoryPage() {
           break;
       }
 
+      // Appeler getAdherenceStats avec les paramètres (compatibles mode local)
       const adherenceStats = await getAdherenceStats(userId, startDate, endDate);
       setStats(adherenceStats);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur chargement statistiques:', error);
       setError('Erreur lors du chargement des statistiques');
     } finally {
@@ -69,9 +67,8 @@ export default function HistoryPage() {
   // Changement de période
   const handlePeriodChange = (period: 'week' | 'month' | 'quarter') => {
     setSelectedPeriod(period);
-    if (user) {
-      loadStats(user.uid, period);
-    }
+    // Fonctionne avec ou sans utilisateur Firebase (mode local)
+    loadStats(user?.uid, period);
   };
 
   // Obtenir la couleur selon le taux d'adhérence
@@ -85,7 +82,7 @@ export default function HistoryPage() {
   const getAdherenceMessage = (rate: number) => {
     if (rate >= 90) return 'Excellent ! Vous respectez parfaitement votre traitement.';
     if (rate >= 70) return 'Bien ! Quelques améliorations possibles.';
-    if (rate >= 50) return 'Attention, essayez d\'améliorer votre régularité.';
+    if (rate >= 50) return 'Attention, essayez d&apos;améliorer votre régularité.';
     return 'Important : consultez votre médecin pour adapter votre traitement.';
   };
 
@@ -97,22 +94,7 @@ export default function HistoryPage() {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Connexion requise</h2>
-          <p className="text-gray-600 mb-6">Vous devez être connecté pour voir votre historique.</p>
-          <Link
-            href="/"
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Retour à l'accueil
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  // Plus de vérification d'utilisateur nécessaire - fonctionne en mode local
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -139,7 +121,7 @@ export default function HistoryPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Sélecteur de période */}
         <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Période d'analyse</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Période d&apos;analyse</h2>
           <div className="flex space-x-4">
             {[
               { key: 'week', label: '7 jours' },
@@ -150,8 +132,8 @@ export default function HistoryPage() {
                 key={key}
                 onClick={() => handlePeriodChange(key as 'week' | 'month' | 'quarter')}
                 className={`px-4 py-2 rounded-lg transition-colors ${selectedPeriod === key
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
               >
                 {label}
@@ -176,7 +158,7 @@ export default function HistoryPage() {
             <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-200 mb-8">
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Taux d'adhérence - {getPeriodLabel()}
+                  Taux d&apos;adhérence - {getPeriodLabel()}
                 </h2>
                 <div className={`text-6xl font-bold ${getAdherenceColor(stats.adherenceRate)} mb-4`}>
                   {stats.adherenceRate}%
@@ -190,7 +172,7 @@ export default function HistoryPage() {
               <div className="w-full bg-gray-200 rounded-full h-4 mb-6">
                 <div
                   className={`h-4 rounded-full transition-all duration-500 ${stats.adherenceRate >= 90 ? 'bg-green-500' :
-                      stats.adherenceRate >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+                    stats.adherenceRate >= 70 ? 'bg-yellow-500' : 'bg-red-500'
                     }`}
                   style={{ width: `${stats.adherenceRate}%` }}
                 ></div>

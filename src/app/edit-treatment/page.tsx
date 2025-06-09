@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function EditTreatmentPage() {
+function EditTreatmentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const treatmentId = searchParams.get('id');
@@ -70,7 +70,7 @@ export default function EditTreatmentPage() {
 
             <p className="text-gray-600 max-w-2xl mx-auto">
               La fonctionnalité de modification des traitements existants est en cours de développement.
-              En attendant, vous pouvez créer un nouveau traitement et supprimer l'ancien.
+              En attendant, vous pouvez créer un nouveau traitement et supprimer l&apos;ancien.
             </p>
 
             <div className="space-y-4">
@@ -135,15 +135,30 @@ export default function EditTreatmentPage() {
             </div>
             <div className="flex items-start space-x-2">
               <span className="text-orange-600">•</span>
-              <p>Consultez l'historique pour voir vos statistiques d'adhérence</p>
+              <p>Consultez l&apos;historique pour voir vos statistiques d&apos;adhérence</p>
             </div>
             <div className="flex items-start space-x-2">
               <span className="text-orange-600">•</span>
-              <p>Contactez le support si vous avez besoin d'aide pour gérer vos traitements</p>
+              <p>Contactez le support si vous avez besoin d&apos;aide pour gérer vos traitements</p>
             </div>
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+export default function EditTreatmentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    }>
+      <EditTreatmentContent />
+    </Suspense>
   );
 } 

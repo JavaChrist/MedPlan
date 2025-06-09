@@ -33,7 +33,7 @@ export function calculateDailySchedule(treatment: Treatment, date: Date): Schedu
   const [startHour, startMin] = startTime.split(':').map(Number);
   const [endHour, endMin] = endTime.split(':').map(Number);
 
-  let startMinutes = startHour * 60 + startMin;
+  const startMinutes = startHour * 60 + startMin;
   let endMinutes = endHour * 60 + endMin;
 
   // Gestion du passage de minuit (ex: 22h -> 06h)
@@ -50,7 +50,7 @@ export function calculateDailySchedule(treatment: Treatment, date: Date): Schedu
     const timeInMinutes = startMinutes + (i * interval);
 
     // Gestion du passage de minuit
-    let actualHour = Math.floor(timeInMinutes / 60) % 24;
+    const actualHour = Math.floor(timeInMinutes / 60) % 24;
     const actualMin = Math.floor(timeInMinutes % 60);
 
     doseTime.setHours(actualHour, actualMin, 0, 0);
@@ -98,7 +98,7 @@ export function recalculateAfterDelay(
   const remainingCount = todaysSchedule.length - missedIndex - 1;
   if (remainingCount > 0) {
     const [endHour, endMin] = treatment.endTime.split(':').map(Number);
-    let endTime = new Date(currentTime);
+    const endTime = new Date(currentTime);
     endTime.setHours(endHour, endMin, 0, 0);
 
     // Si l'heure de fin est le lendemain
@@ -159,7 +159,7 @@ export function generateSchedule(
   }
 
   // Conversion en minutes
-  let startMinutes = startHour * 60;
+  const startMinutes = startHour * 60;
   let endMinutes = endHour * 60;
 
   // Gestion du passage de minuit (ex: 22h -> 6h)
@@ -256,6 +256,94 @@ function formatTime(minutes: number): string {
   const mins = totalMinutes % 60;
 
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
+// Interface pour MedicationDose (Timeline)
+export interface MedicationDose {
+  id: string;
+  time: string; // Format HH:mm
+  medicationName: string;
+  dosage?: string;
+  status: 'upcoming' | 'taken' | 'missed' | 'delayed';
+  takenAt?: string; // Heure réelle de prise si différente
+  notes?: string;
+  treatmentId?: string;
+}
+
+// Interface pour Firebase Treatment
+export interface FirebaseTreatment {
+  id?: string;
+  name: string;
+  dosage: string;
+  frequency: number;
+  duration: number;
+  startTime: string;
+  endTime: string;
+  startDate: Date;
+  endDate: Date;
+  isActive: boolean;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Génère le planning quotidien complet pour la Timeline à partir des traitements Firebase
+ * @param treatments Liste des traitements Firebase
+ * @param date Date pour laquelle générer le planning (défaut: aujourd'hui)
+ * @returns Planning formaté pour la Timeline (MedicationDose[])
+ */
+export function generateTodaySchedule(treatments: FirebaseTreatment[], date: Date = new Date()): MedicationDose[] {
+  const schedule: MedicationDose[] = [];
+  let doseIdCounter = 1;
+
+  treatments.forEach(treatment => {
+    // Vérifier si le traitement est actif pour cette date
+    const treatmentDate = new Date(date);
+    treatmentDate.setHours(0, 0, 0, 0);
+
+    const startDate = new Date(treatment.startDate);
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(treatment.endDate);
+    endDate.setHours(23, 59, 59, 999);
+
+    if (treatmentDate < startDate || treatmentDate > endDate) {
+      return; // Traitement pas actif pour cette date
+    }
+
+    // Convertir le traitement Firebase en format planner
+    const plannerTreatment: Treatment = {
+      id: treatment.id || `treatment_${Date.now()}`,
+      name: treatment.name,
+      dosage: treatment.dosage,
+      frequency: treatment.frequency,
+      duration: treatment.duration,
+      startTime: treatment.startTime,
+      endTime: treatment.endTime,
+      createdAt: treatment.createdAt || new Date()
+    };
+
+    // Calculer les horaires pour ce traitement
+    const dailyDoses = calculateDailySchedule(plannerTreatment, date);
+
+    // Convertir en format MedicationDose pour la Timeline
+    dailyDoses.forEach(dose => {
+      const medicationDose: MedicationDose = {
+        id: `dose_${doseIdCounter++}`,
+        time: dose.scheduledTime.toTimeString().slice(0, 5), // Format HH:mm
+        medicationName: dose.treatmentName,
+        dosage: dose.dosage,
+        status: 'upcoming',
+        treatmentId: dose.treatmentId
+      };
+
+      schedule.push(medicationDose);
+    });
+  });
+
+  // Trier par heure
+  return schedule.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 /*
