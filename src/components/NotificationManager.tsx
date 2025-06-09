@@ -125,10 +125,9 @@ export function useNotificationManager() {
     try {
       // Créer et afficher la notification
       const notification = new Notification(title, {
-        icon: '/icon-192x192.png', // Icône par défaut de l'app
-        badge: '/icon-72x72.png',   // Badge pour mobile
+        // Utiliser l'icône par défaut du navigateur (plus fiable)
         tag: 'medplan-reminder',    // Tag pour grouper les notifications
-        requireInteraction: true,  // Nécessite une interaction pour disparaître
+        requireInteraction: false, // Permet aux notifications de disparaître automatiquement
         ...options
       });
 
@@ -189,8 +188,6 @@ export function useNotificationManager() {
       // Afficher la notification
       showNotification(options.title, {
         body: options.body,
-        icon: options.icon || '/icon-192x192.png',
-        badge: options.badge || '/icon-72x72.png',
         tag: options.tag || 'medplan-scheduled'
       });
 
@@ -261,7 +258,6 @@ export function useNotificationManager() {
       title,
       body,
       scheduledTime,
-      icon: '/icon-192x192.png',
       tag: `medication-${medicationName.toLowerCase().replace(/\s+/g, '-')}`
     });
   }, [scheduleNotification]);
@@ -458,7 +454,7 @@ export default function NotificationManager({ children, className = '' }: Notifi
           </div>
           <button
             onClick={() => showNotification('Test MedPlan', {
-              body: 'Les notifications fonctionnent correctement !'
+              body: 'Les notifications fonctionnent correctement ! 🎉'
             })}
             className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors"
           >
@@ -471,7 +467,4 @@ export default function NotificationManager({ children, className = '' }: Notifi
   }
 
   return null;
-}
-
-// Export du hook pour utilisation dans d'autres composants
-export { useNotificationManager }; 
+} 
