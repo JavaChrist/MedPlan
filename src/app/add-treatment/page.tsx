@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { addTreatment, onAuthChange } from '@/lib/firebase';
 import { generateSchedule } from '@/lib/planner';
 import { useNotificationManager } from '@/components/NotificationManager';
+import { useToast } from '@/components/Toast';
 import type { User } from 'firebase/auth';
 import {
   ArrowLeftIcon,
@@ -15,12 +16,14 @@ import {
   CalendarIcon,
   LightbulbIcon,
   PillIcon,
-  SpinnerIcon
+  SpinnerIcon,
+  CheckIcon
 } from '@/components/Icons';
 
 export default function AddTreatmentPage() {
   const router = useRouter();
   const { scheduleMedicationReminder, hasPermission } = useNotificationManager();
+  const { success: showSuccessToast, error: showErrorToast, ToastContainer } = useToast();
 
   // État d'authentification
   const [user, setUser] = useState<User | null>(null);
@@ -173,9 +176,19 @@ export default function AddTreatmentPage() {
       // Rediriger vers le dashboard
       router.push('/dashboard?success=treatment-added');
 
+      showSuccessToast(
+        'Traitement ajouté avec succès !',
+        `${formData.name} (${formData.frequency} fois par jour) a été programmé.`
+      );
+
     } catch (error: unknown) {
       console.error('Erreur ajout traitement:', error);
-      setErrors({ submit: error instanceof Error ? error.message : 'Erreur lors de l&apos;ajout du traitement' });
+      const errorMessage = error instanceof Error ? error.message : 'Erreur lors de l\'ajout du traitement';
+      setErrors({ submit: errorMessage });
+      showErrorToast(
+        'Erreur lors de l\'ajout',
+        errorMessage
+      );
     } finally {
       setIsLoading(false);
     }
@@ -248,6 +261,9 @@ export default function AddTreatmentPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Toast Container */}
+      <ToastContainer />
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-blue-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -409,21 +425,63 @@ export default function AddTreatmentPage() {
 
             {/* Aperçu des horaires */}
             {formData.frequency && formData.startTime && formData.endTime && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-3 flex items-center space-x-2">
-                  <CalendarIcon className="w-5 h-5" />
-                  <span>Aperçu des horaires calculés :</span>
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {previewTimes().map((time, index) => (
-                    <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                      {time}
-                    </span>
-                  ))}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xl">🤖</span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-green-900 text-lg">
+                        Planning intelligent généré
+                      </h4>
+                      <p className="text-green-700 text-sm">
+                        Horaires optimisés automatiquement
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-blue-700 text-sm mt-2">
-                  ⚡ Les horaires sont calculés automatiquement par l&apos;IA pour une répartition optimale
-                </p>
+
+                <div className="text-center mb-4">
+                  <p className="text-green-800 font-medium mb-3">
+                    🎯 Vos {formData.frequency} prise{formData.frequency > 1 ? 's' : ''} {formData.frequency > 1 ? 'seront planifiées' : 'sera planifiée'} à :
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    {previewTimes().map((time, index) => (
+                      <div key={index} className="group">
+                        <div className="bg-white border-2 border-green-300 px-4 py-3 rounded-xl text-xl font-bold text-green-800 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105">
+                          ⏰ {time}
+                        </div>
+                        {index < previewTimes().length - 1 && (
+                          <div className="hidden sm:block absolute transform translate-x-16 translate-y-3">
+                            <span className="text-green-600 text-2xl">→</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white bg-opacity-70 rounded-lg p-4 space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <span className="text-green-600 mt-1">✨</span>
+                    <p className="text-green-800 text-sm">
+                      <strong>Algorithme intelligent :</strong> Espacement uniforme optimal sur votre plage horaire personnalisée ({formData.startTime} → {formData.endTime})
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <span className="text-green-600 mt-1">📱</span>
+                    <p className="text-green-800 text-sm">
+                      <strong>Notifications automatiques :</strong> {hasPermission ? 'Rappels programmés pour chaque prise' : 'Activez les notifications pour des rappels automatiques'}
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <span className="text-green-600 mt-1">🎯</span>
+                    <p className="text-green-800 text-sm">
+                      <strong>Recalcul intelligent :</strong> L'application s'adapte automatiquement si vous prenez une dose en retard
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -463,17 +521,23 @@ export default function AddTreatmentPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
               >
                 {isLoading ? (
-                  <span className="flex items-center justify-center space-x-2">
-                    <SpinnerIcon className="w-4 h-4 text-white" />
+                  <span className="flex items-center justify-center space-x-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
                     <span>Ajout en cours...</span>
+                    <div className="flex space-x-1">
+                      <div className="w-1 h-1 bg-white rounded-full animate-bounce"></div>
+                      <div className="w-1 h-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-1 h-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
                   </span>
                 ) : (
                   <span className="flex items-center justify-center space-x-2">
                     <PillIcon className="w-5 h-5" />
                     <span>Ajouter le traitement</span>
+                    <span className="text-lg">✨</span>
                   </span>
                 )}
               </button>

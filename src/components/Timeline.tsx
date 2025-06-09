@@ -303,17 +303,129 @@ export default function Timeline({
 
       {/* Liste des doses */}
       <div className="p-6">
-        <div className="space-y-6">
-          {sortedDoses.map((dose, index) => (
-            <TimelineItem
-              key={dose.id}
-              dose={dose}
-              isLast={index === sortedDoses.length - 1}
-              isActive={index === activeDoseIndex}
-              onAction={onDoseAction}
-            />
-          ))}
-        </div>
+        {doses.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-gray-400 text-6xl mb-4">⏰</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Aucune dose programmée aujourd'hui
+            </h3>
+            <p className="text-gray-600">
+              Ajoutez un traitement ou naviguez vers un autre jour pour voir votre planning.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* En-tête avec informations sur l'algorithme */}
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-blue-600">🤖</span>
+                <h4 className="font-medium text-blue-900">Planning intelligent généré automatiquement</h4>
+              </div>
+              <p className="text-blue-800 text-sm">
+                {doses.length} dose{doses.length > 1 ? 's' : ''} répartie{doses.length > 1 ? 's' : ''}
+                optimalement selon vos préférences horaires et la fréquence de vos traitements.
+              </p>
+              <div className="mt-2 text-xs text-blue-700">
+                💡 <strong>Algorithme :</strong> Espacement uniforme sur votre plage horaire personnalisée
+              </div>
+            </div>
+
+            {/* Liste des doses */}
+            <div className="space-y-3">
+              {doses.map((dose, index) => {
+                const isPast = currentTime.toTimeString().slice(0, 5) > dose.time;
+                const isCurrent = !isPast && index === doses.findIndex(d => currentTime.toTimeString().slice(0, 5) <= d.time);
+
+                return (
+                  <div
+                    key={dose.id}
+                    className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all duration-300 ${isCurrent
+                        ? 'bg-blue-50 border-blue-300 shadow-lg ring-2 ring-blue-100'
+                        : dose.status === 'taken'
+                          ? 'bg-green-50 border-green-200'
+                          : dose.status === 'missed'
+                            ? 'bg-red-50 border-red-200'
+                            : dose.status === 'delayed'
+                              ? 'bg-orange-50 border-orange-200'
+                              : isPast
+                                ? 'bg-gray-50 border-gray-200'
+                                : 'bg-white border-gray-200'
+                      }`}
+                  >
+                    <div className="flex items-center space-x-4">
+                      {/* Indicateur de statut visuel */}
+                      <div className={`w-3 h-3 rounded-full ${dose.status === 'taken' ? 'bg-green-500' :
+                          dose.status === 'missed' ? 'bg-red-500' :
+                            dose.status === 'delayed' ? 'bg-orange-500' :
+                              isCurrent ? 'bg-blue-500 animate-pulse' :
+                                isPast ? 'bg-gray-400' : 'bg-gray-300'
+                        }`} />
+
+                      {/* Heure avec emphasis */}
+                      <div className={`text-2xl font-bold ${isCurrent ? 'text-blue-600' :
+                          dose.status === 'taken' ? 'text-green-600' :
+                            dose.status === 'missed' ? 'text-red-600' :
+                              dose.status === 'delayed' ? 'text-orange-600' :
+                                'text-gray-900'
+                        }`}>
+                        {dose.time}
+                      </div>
+
+                      {/* Informations du médicament */}
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{dose.medicationName}</h4>
+                        <p className="text-sm text-gray-600">{dose.dosage}</p>
+                        {dose.takenAt && (
+                          <p className="text-xs text-green-600">✅ Pris à {dose.takenAt}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Statut et actions */}
+                    <div className="flex items-center space-x-3">
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${dose.status === 'taken' ? 'bg-green-100 text-green-800' :
+                          dose.status === 'missed' ? 'bg-red-100 text-red-800' :
+                            dose.status === 'delayed' ? 'bg-orange-100 text-orange-800' :
+                              isCurrent ? 'bg-blue-100 text-blue-800' :
+                                isPast ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                        {dose.status === 'taken' ? '✅ Pris' :
+                          dose.status === 'missed' ? '❌ Oublié' :
+                            dose.status === 'delayed' ? '⏰ Retardé' :
+                              isCurrent ? '🔔 Maintenant' :
+                                isPast ? '⏳ Passé' : '📅 À venir'}
+                      </div>
+
+                      {/* Boutons d'action - À implémenter */}
+                      {dose.status === 'upcoming' && (isCurrent || isPast) && onDoseAction && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => onDoseAction(dose, 'take')}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            ✅ Pris
+                          </button>
+                          <button
+                            onClick={() => onDoseAction(dose, 'skip')}
+                            className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                          >
+                            ❌ Oublié
+                          </button>
+                          <button
+                            onClick={() => onDoseAction(dose, 'delay')}
+                            className="px-3 py-1 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 transition-colors"
+                          >
+                            ⏰ Plus tard
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* Message d'encouragement */}
         {stats.taken > 0 && (
