@@ -102,6 +102,31 @@ export default function DebugPage() {
     loadDebugData();
   };
 
+  // Diagnostic Firebase - État actuel
+  const checkFirebaseStatus = () => {
+    const firebaseConfig = {
+      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    };
+
+    const missingVars = Object.entries(firebaseConfig)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    return {
+      isConfigured: missingVars.length === 0,
+      missingVars,
+      projectId: firebaseConfig.projectId,
+      config: firebaseConfig
+    };
+  };
+
+  const firebaseStatus = checkFirebaseStatus();
+
   const userGroups = treatments.reduce((groups, treatment) => {
     const userId = treatment.userId;
     if (!groups[userId]) groups[userId] = [];
@@ -140,6 +165,127 @@ export default function DebugPage() {
             <p><strong>Nombre total de traitements :</strong> {treatments.length}</p>
             <p><strong>Traitements actifs :</strong> {treatments.filter(t => t.isActive !== false).length}</p>
             <p><strong>Groupes d&apos;utilisateurs :</strong> {Object.keys(userGroups).length}</p>
+          </div>
+        </div>
+
+        {/* 🔥 NOUVEAU : Diagnostic Firebase */}
+        <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl shadow-md p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+            <span className="text-2xl">🔥</span>
+            <span>État Firebase - Où vont vos données ?</span>
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Configuration Firebase */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-800">📋 Configuration Firebase</h3>
+              {firebaseStatus.isConfigured ? (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-green-600 text-xl">✅</span>
+                    <span className="text-green-800 font-medium">Firebase configuré</span>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    <strong>Projet :</strong> {firebaseStatus.projectId}
+                  </p>
+                  <p className="text-sm text-green-700">
+                    <strong>Sauvegarde :</strong> Dans le cloud Firebase ☁️
+                  </p>
+                  <div className="mt-3 p-3 bg-green-100 rounded-lg">
+                    <p className="text-xs text-green-800">
+                      🎉 <strong>Vos données sont sauvegardées dans Firebase !</strong><br />
+                      Synchronisation automatique entre tous vos appareils.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-orange-600 text-xl">⚠️</span>
+                    <span className="text-orange-800 font-medium">Firebase non configuré</span>
+                  </div>
+                  <p className="text-sm text-orange-700">
+                    <strong>Sauvegarde :</strong> Dans votre navigateur (localStorage) 💾
+                  </p>
+                  {firebaseStatus.missingVars.length > 0 && (
+                    <p className="text-xs text-orange-600">
+                      Manquant : {firebaseStatus.missingVars.join(', ')}
+                    </p>
+                  )}
+                  <div className="mt-3 p-3 bg-orange-100 rounded-lg">
+                    <p className="text-xs text-orange-800">
+                      📱 <strong>Mode local actif :</strong><br />
+                      Vos données sont dans ce navigateur uniquement.<br />
+                      Configurez Firebase pour la synchronisation multi-appareils.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* État des données */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-800">💾 État des données</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center p-2 bg-white rounded border">
+                  <span className="text-sm font-medium">Données locales :</span>
+                  <span className="text-sm text-blue-600">{treatments.length} traitement(s)</span>
+                </div>
+
+                {firebaseStatus.isConfigured ? (
+                  <div className="flex justify-between items-center p-2 bg-white rounded border">
+                    <span className="text-sm font-medium">Firebase cloud :</span>
+                    <span className="text-sm text-green-600">🔄 Synchronisé</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center p-2 bg-gray-100 rounded border border-dashed">
+                    <span className="text-sm font-medium text-gray-500">Firebase cloud :</span>
+                    <span className="text-sm text-gray-500">❌ Non actif</span>
+                  </div>
+                )}
+
+                <div className="mt-3 p-3 bg-blue-100 rounded-lg">
+                  <p className="text-xs text-blue-800">
+                    💡 <strong>Comment voir vos données Firebase :</strong><br />
+                    1. Allez sur <a href="https://console.firebase.google.com" target="_blank" className="underline">console.firebase.google.com</a><br />
+                    2. Sélectionnez votre projet<br />
+                    3. Firestore Database → Voir vos collections
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions Firebase */}
+          <div className="mt-6 pt-4 border-t border-orange-200">
+            <div className="flex flex-wrap gap-3">
+              {!firebaseStatus.isConfigured && (
+                <Link
+                  href="/firebase-test"
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                >
+                  🔧 Configurer Firebase
+                </Link>
+              )}
+
+              {firebaseStatus.isConfigured && (
+                <Link
+                  href="/firebase-test"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  🧪 Tester Firebase
+                </Link>
+              )}
+
+              <a
+                href="https://console.firebase.google.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                🌐 Console Firebase
+              </a>
+            </div>
           </div>
         </div>
 

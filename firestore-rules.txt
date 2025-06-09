@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Règles pour les profils utilisateurs
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Règles pour les traitements de chaque utilisateur
+    match /users/{userId}/treatments/{treatmentId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Règles pour l'historique des prises de chaque utilisateur
+    match /users/{userId}/medication_history/{historyId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Règles pour les données partagées (si nécessaire plus tard)
+    match /shared/{document} {
+      allow read: if request.auth != null;
+      // write: seulement pour les admins si nécessaire
+    }
+  }
+} 

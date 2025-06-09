@@ -22,6 +22,13 @@ import {
   ArrowRightIcon
 } from '@/components/Icons';
 
+// Nouvelle icône pour Firebase
+const FirebaseIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771zm16.794 3.692l-2.25-14a.54.54 0 00-.919-.295L3.316 19.365l7.856 4.427a1.621 1.621 0 001.588 0zM14.3 7.147l-1.818-3.482a.542.542 0 00-.96 0L3.53 17.984z" />
+  </svg>
+);
+
 export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [doses, setDoses] = useState<MedicationDose[]>([]);
@@ -372,6 +379,14 @@ export default function DashboardPage() {
                 >
                   <SettingsIcon className="w-6 h-6 text-orange-600 mb-2 group-hover:scale-110 transition-transform duration-300" />
                   <span className="font-medium text-orange-800 text-center text-sm">Paramètres</span>
+                </Link>
+
+                <Link
+                  href="/firebase-test"
+                  className="group flex flex-col items-center justify-center h-24 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg hover:bg-yellow-100 hover:scale-105 hover:shadow-lg transition-all duration-300"
+                >
+                  <FirebaseIcon className="w-6 h-6 text-yellow-600 mb-2 group-hover:scale-110 transition-transform duration-300" />
+                  <span className="font-medium text-yellow-800 text-center text-sm">Test Firebase</span>
                 </Link>
               </div>
             </div>

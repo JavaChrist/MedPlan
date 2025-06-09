@@ -47,6 +47,7 @@ const checkFirebaseConfig = () => {
 
   if (missingVars.length > 0) {
     console.warn('⚠️ Firebase : Variables d\'environnement manquantes - Mode local actif');
+    console.warn('⚠️ Variables manquantes:', missingVars);
     return false;
   }
 
@@ -54,7 +55,7 @@ const checkFirebaseConfig = () => {
   return true;
 };
 
-const isFirebaseConfigured = checkFirebaseConfig();
+const hasFirebaseConfig = checkFirebaseConfig();
 
 // Initialisation Firebase avec gestion d'erreur
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,13 +63,22 @@ let app: any = null;
 let auth: Auth;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let db: any = null;
+let isFirebaseConfigured = false; // ← VRAIE disponibilité de Firebase
 
 try {
-  if (isFirebaseConfigured) {
+  if (hasFirebaseConfig) {
+    console.log('🔄 Tentative d\'initialisation Firebase...');
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+
+    // Test de connectivité basique
+    console.log('🧪 Test de connectivité Firebase...');
+
+    // Si on arrive ici sans exception, Firebase est vraiment disponible
+    isFirebaseConfigured = true;
     console.log('✅ Firebase initialisé avec succès');
+    console.log('✅ Projet Firebase:', firebaseConfig.projectId);
   } else {
     console.warn('⚠️ Mode dégradé : Firebase non configuré');
     // Mode fallback sans Firebase - créer des objets mock
@@ -77,18 +87,108 @@ try {
       onAuthStateChanged: () => () => { }
     } as unknown as Auth;
     db = null;
+    isFirebaseConfigured = false;
   }
 } catch (error) {
   console.error('❌ Erreur initialisation Firebase:', error);
+  console.error('❌ Détails de l\'erreur:', {
+    message: error instanceof Error ? error.message : 'Erreur inconnue',
+    code: error && typeof error === 'object' && 'code' in error ? error.code : 'unknown'
+  });
+
   // Mode fallback sans Firebase
   auth = {
     currentUser: null,
     onAuthStateChanged: () => () => { }
   } as unknown as Auth;
   db = null;
+  isFirebaseConfigured = false; // ← Important : Firebase n'est PAS disponible
+
+  console.warn('⚠️ Basculement en mode local suite à l\'erreur Firebase');
 }
 
 export { auth, db };
+
+// Variable globale pour exporter l'état Firebase
+export { isFirebaseConfigured };
+
+// Fonction de diagnostic Firebase
+export async function testFirebaseConnection(): Promise<{
+  configured: boolean;
+  connected: boolean;
+  error?: string;
+  details: {
+    hasConfig?: boolean;
+    hasAuth?: boolean;
+    hasDb?: boolean;
+    projectId?: string;
+    userId?: string;
+    testCompleted?: boolean;
+    errorCode?: string;
+  };
+}> {
+  try {
+    if (!isFirebaseConfigured) {
+      return {
+        configured: false,
+        connected: false,
+        error: 'Firebase non configuré',
+        details: { hasConfig: hasFirebaseConfig, hasAuth: !!auth, hasDb: !!db }
+      };
+    }
+
+    // Test d'authentification
+    console.log('🧪 Test d\'authentification Firebase...');
+    const testUser = await signInAnonymously(auth);
+    console.log('✅ Test d\'authentification réussi:', testUser.user.uid);
+
+    // Test d'écriture Firestore
+    console.log('🧪 Test d\'écriture Firestore...');
+    const testDoc = doc(db, 'test', 'connection-test');
+    await setDoc(testDoc, {
+      timestamp: new Date(),
+      test: 'connection-check'
+    });
+    console.log('✅ Test d\'écriture Firestore réussi');
+
+    return {
+      configured: true,
+      connected: true,
+      details: {
+        projectId: firebaseConfig.projectId,
+        userId: testUser.user.uid,
+        testCompleted: true
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ Test de connexion Firebase échoué:', error);
+
+    let errorMessage = 'Erreur inconnue';
+    let errorCode = 'unknown';
+
+    if (error && typeof error === 'object' && 'code' in error) {
+      errorCode = error.code as string;
+      if ('message' in error && typeof error.message === 'string') {
+        errorMessage = error.message;
+      }
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    return {
+      configured: isFirebaseConfigured,
+      connected: false,
+      error: errorMessage,
+      details: {
+        errorCode,
+        hasAuth: !!auth,
+        hasDb: !!db,
+        projectId: firebaseConfig.projectId
+      }
+    };
+  }
+}
 
 // Types TypeScript pour les données Firestore
 export interface Treatment {

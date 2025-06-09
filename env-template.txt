@@ -1,0 +1,26 @@
+# 🔥 Template de configuration Firebase pour MedPlan
+# 
+# Instructions :
+# 1. Créer un fichier `.env.local` à la racine du projet
+# 2. Copier le contenu ci-dessous dans `.env.local`
+# 3. Remplacer les valeurs par celles de votre projet Firebase
+# 4. Redémarrer l'application : npm run dev
+
+# Configuration Firebase - MedPlan
+NEXT_PUBLIC_FIREBASE_API_KEY="AIzaSyC1234567890abcdef_REMPLACER_PAR_VOTRE_CLE"
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="votre-projet.firebaseapp.com"
+NEXT_PUBLIC_FIREBASE_PROJECT_ID="votre-projet"
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="votre-projet.appspot.com"
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="123456789012"
+NEXT_PUBLIC_FIREBASE_APP_ID="1:123456789012:web:abcdef123456_REMPLACER"
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="G-AB12CD34EF"
+
+# 🎯 Exemple avec de vraies valeurs Firebase :
+#
+# NEXT_PUBLIC_FIREBASE_API_KEY="AIzaSyBk7h5w2QaGfCt9s8VxM3nK4pR7uY2qL1o"
+# NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="medplan-john.firebaseapp.com"
+# NEXT_PUBLIC_FIREBASE_PROJECT_ID="medplan-john"
+# NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="medplan-john.appspot.com"
+# NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="748291564032"
+# NEXT_PUBLIC_FIREBASE_APP_ID="1:748291564032:web:9f8e7d6c5b4a3f2e1d9c8b"
+# NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="G-K2H5M3N8P1" 
