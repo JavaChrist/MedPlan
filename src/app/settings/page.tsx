@@ -18,7 +18,6 @@ import {
   PlusIcon,
   ChartIcon
 } from '@/components/Icons';
-import FirebaseStatus from '@/components/FirebaseStatus';
 
 interface UserPreferences {
   notifications: boolean;
@@ -48,9 +47,19 @@ export default function SettingsPage() {
   // Observer l'état d'authentification
   useEffect(() => {
     const unsubscribe = onAuthChange(async (user) => {
+      console.log('🔄 Changement d\'utilisateur détecté:', {
+        user: user,
+        uid: user?.uid,
+        isAnonymous: user?.isAnonymous,
+        email: user?.email
+      });
+
       setUser(user);
       if (user) {
+        console.log('👤 Chargement des préférences pour:', user.uid);
         await loadUserPreferences(user.uid);
+      } else {
+        console.log('👤 Aucun utilisateur, utilisation des valeurs par défaut');
       }
       setIsLoading(false);
     });
@@ -58,30 +67,72 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, []);
 
+  // Debug: Surveiller les changements de préférences
+  useEffect(() => {
+    console.log('🎛️ Préférences modifiées:', preferences);
+  }, [preferences]);
+
   // Charger les préférences utilisateur
   const loadUserPreferences = async (userId: string) => {
+    console.log('🔄 Début chargement préférences pour userId:', userId);
+
+    // Debug: Vérifier ce qui est dans localStorage
+    const localData = localStorage.getItem(`profile_${userId}`);
+    console.log('📱 Données localStorage pour ce user:', localData);
+
     try {
       const profile = await getUserProfile(userId);
+      console.log('📋 Profil récupéré:', profile);
+
       if (profile && profile.preferences) {
+        console.log('✅ Préférences trouvées:', profile.preferences);
         setPreferences(profile.preferences);
+      } else {
+        console.log('ℹ️ Aucunes préférences trouvées, utilisation des valeurs par défaut');
+        console.log('📊 Valeurs par défaut utilisées:', {
+          notifications: true,
+          reminderAdvance: 15,
+          dailyReportTime: '20:00'
+        });
       }
-    } catch {
-      console.error('Erreur chargement préférences');
+    } catch (error) {
+      console.error('❌ Erreur chargement préférences:', error);
+      // En cas d'erreur, on garde les valeurs par défaut
     }
   };
 
   // Sauvegarder les préférences
   const savePreferences = async () => {
-    if (!user) return;
+    if (!user) {
+      console.error('❌ Aucun utilisateur connecté pour la sauvegarde');
+      return;
+    }
+
+    console.log('🔄 Début sauvegarde préférences:', {
+      userId: user.uid,
+      preferences: preferences,
+      userType: user.isAnonymous ? 'anonymous' : 'email'
+    });
 
     setIsSaving(true);
     setMessage(null);
 
     try {
       await updateUserProfile(user.uid, { preferences });
-      setMessage({ type: 'success', text: 'Préférences sauvegardées avec succès !' });
+
+      console.log('✅ Sauvegarde terminée avec succès');
+
+      // Message de succès clair
+      setMessage({
+        type: 'success',
+        text: '✅ Préférences sauvegardées avec succès !'
+      });
+
+      // Effacer le message après 3 secondes
+      setTimeout(() => setMessage(null), 3000);
+
     } catch (error: unknown) {
-      console.error('Erreur sauvegarde:', error);
+      console.error('❌ Erreur sauvegarde:', error);
 
       const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la sauvegarde des préférences';
 
@@ -89,15 +140,20 @@ export default function SettingsPage() {
       if (errorMessage.includes('localement')) {
         setMessage({
           type: 'success',
-          text: 'Préférences sauvegardées localement - seront synchronisées à la reconnexion'
+          text: '💾 Préférences sauvegardées localement - seront synchronisées à la reconnexion'
         });
+        // Effacer le message après 4 secondes pour ce cas spécial
+        setTimeout(() => setMessage(null), 4000);
       } else if (errorMessage.includes('connexion')) {
         setMessage({
           type: 'error',
-          text: 'Problème de connexion - vérifiez votre réseau et les paramètres Firebase'
+          text: '❌ Problème de connexion - vérifiez votre réseau et les paramètres Firebase'
         });
       } else {
-        setMessage({ type: 'error', text: errorMessage });
+        setMessage({
+          type: 'error',
+          text: `❌ ${errorMessage}`
+        });
       }
     } finally {
       setIsSaving(false);
@@ -106,10 +162,16 @@ export default function SettingsPage() {
 
   // Gestion des changements de préférences
   const handlePreferenceChange = (key: keyof UserPreferences, value: boolean | number | string) => {
-    setPreferences(prev => ({
-      ...prev,
-      [key]: value
-    }));
+    console.log('🎛️ Modification préférence:', { key, value, type: typeof value });
+
+    setPreferences(prev => {
+      const newPrefs = {
+        ...prev,
+        [key]: value
+      };
+      console.log('📊 Nouvelles préférences:', newPrefs);
+      return newPrefs;
+    });
   };
 
   // Test de notification
@@ -181,16 +243,21 @@ export default function SettingsPage() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* État Firebase */}
-        <FirebaseStatus className="mb-6" />
-
         {/* Message de retour */}
         {message && (
-          <div className={`rounded-xl p-4 mb-6 ${message.type === 'success'
+          <div className={`rounded-xl p-4 mb-6 transition-all duration-300 ${message.type === 'success'
             ? 'bg-green-50 border border-green-200 text-green-800'
             : 'bg-red-50 border border-red-200 text-red-800'
             }`}>
-            {message.type === 'success' ? '✅' : '❌'} {message.text}
+            <div className="flex items-center justify-between">
+              <span className="flex-1">{message.text}</span>
+              <button
+                onClick={() => setMessage(null)}
+                className="ml-2 text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
 

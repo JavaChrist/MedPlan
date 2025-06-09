@@ -149,9 +149,22 @@ export async function signInAnon(): Promise<User> {
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !auth) {
       console.log('📱 Connexion anonyme en mode local');
-      // Retourner un utilisateur mock pour le mode local
+
+      // Générer ou récupérer un ID utilisateur stable pour ce navigateur
+      let stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+      if (!stableUserId) {
+        // Première fois sur ce navigateur : créer un ID unique
+        stableUserId = 'anonymous-local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('medplan_anonymous_user_id', stableUserId);
+        console.log('🆕 Nouvel utilisateur anonyme créé:', stableUserId);
+      } else {
+        console.log('🔄 Utilisateur anonyme existant récupéré:', stableUserId);
+      }
+
+      // Retourner un utilisateur mock avec l'ID stable
       return {
-        uid: 'anonymous-local-' + Date.now(),
+        uid: stableUserId,
         isAnonymous: true,
         email: null,
         displayName: null,
@@ -302,9 +315,20 @@ export function onAuthChange(callback: (user: User | null) => void) {
   if (isFirebaseConfigured) {
     return onAuthStateChanged(auth, callback);
   } else {
-    // Mode fallback : créer un utilisateur anonyme mock
+    // Mode fallback : récupérer ou créer un utilisateur anonyme stable
+    let stableUserId = localStorage.getItem('medplan_anonymous_user_id');
+
+    if (!stableUserId) {
+      // Première fois : créer un ID unique
+      stableUserId = 'anonymous-local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('medplan_anonymous_user_id', stableUserId);
+      console.log('🆕 Nouvel utilisateur anonyme créé (onAuthChange):', stableUserId);
+    } else {
+      console.log('🔄 Utilisateur anonyme existant récupéré (onAuthChange):', stableUserId);
+    }
+
     const mockUser = {
-      uid: 'anonymous-' + Date.now(),
+      uid: stableUserId,
       isAnonymous: true,
       email: null,
       displayName: null,
@@ -315,7 +339,7 @@ export function onAuthChange(callback: (user: User | null) => void) {
       }
     } as User;
 
-    // Appeler le callback immédiatement avec l'utilisateur mock
+    // Appeler le callback immédiatement avec l'utilisateur mock stable
     setTimeout(() => callback(mockUser), 100);
 
     // Retourner une fonction de désabonnement vide
@@ -451,11 +475,39 @@ export async function updateUserProfile(
     // Vérifier si Firebase est configuré
     if (!isFirebaseConfigured || !db) {
       console.warn('📴 Firebase non configuré - sauvegarde locale');
-      // Sauvegarder localement en attendant
-      localStorage.setItem(`profile_${userId}`, JSON.stringify({
+
+      // Récupérer le profil existant ou créer un profil par défaut
+      const existingProfileData = localStorage.getItem(`profile_${userId}`);
+      let currentProfile: Partial<UserProfile> = {
+        email: '',
+        isAnonymous: true,
+        preferences: {
+          notifications: true,
+          reminderAdvance: 15,
+          dailyReportTime: '20:00'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      if (existingProfileData) {
+        try {
+          const parsedProfile = JSON.parse(existingProfileData);
+          currentProfile = { ...currentProfile, ...parsedProfile };
+        } catch {
+          console.warn('⚠️ Données profil locales corrompues, utilisation des valeurs par défaut');
+        }
+      }
+
+      // Fusionner les mises à jour avec le profil existant
+      const updatedProfile = {
+        ...currentProfile,
         ...updates,
-        updatedAt: new Date().toISOString()
-      }));
+        updatedAt: new Date()
+      };
+
+      localStorage.setItem(`profile_${userId}`, JSON.stringify(updatedProfile));
+      console.log('✅ Profil utilisateur sauvegardé localement');
       return;
     }
 
@@ -474,12 +526,39 @@ export async function updateUserProfile(
 
       if (firebaseError.code === 'unavailable' || firebaseError.code === 'offline') {
         console.warn('📴 Mode hors ligne détecté - sauvegarde locale');
-        // Sauvegarder localement quand hors ligne
-        localStorage.setItem(`profile_${userId}`, JSON.stringify({
+
+        // Récupérer le profil existant ou créer un profil par défaut
+        const existingProfileData = localStorage.getItem(`profile_${userId}`);
+        let currentProfile: Partial<UserProfile> = {
+          email: '',
+          isAnonymous: true,
+          preferences: {
+            notifications: true,
+            reminderAdvance: 15,
+            dailyReportTime: '20:00'
+          },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        if (existingProfileData) {
+          try {
+            const parsedProfile = JSON.parse(existingProfileData);
+            currentProfile = { ...currentProfile, ...parsedProfile };
+          } catch {
+            console.warn('⚠️ Données profil locales corrompues, utilisation des valeurs par défaut');
+          }
+        }
+
+        // Fusionner les mises à jour avec le profil existant
+        const updatedProfile = {
+          ...currentProfile,
           ...updates,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(),
           offline: true
-        }));
+        };
+
+        localStorage.setItem(`profile_${userId}`, JSON.stringify(updatedProfile));
 
         throw new Error('Sauvegardé localement - sera synchronisé à la reconnexion');
       }
