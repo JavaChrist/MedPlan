@@ -23,6 +23,8 @@ export default function HomePage() {
   const [showTimeline, setShowTimeline] = useState(false);
   const [timelineData, setTimelineData] = useState<MedicationDose[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
 
   useEffect(() => {
     // Initialiser l'heure côté client seulement
@@ -30,6 +32,53 @@ export default function HomePage() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Gérer l'événement d'installation PWA
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Empêcher le prompt automatique
+      e.preventDefault();
+      // Stocker l'événement pour l'utiliser plus tard
+      setDeferredPrompt(e);
+      // Afficher notre bouton d'installation
+      setShowInstallButton(true);
+    };
+
+    const handleAppInstalled = () => {
+      // Cacher le bouton quand l'app est installée
+      setShowInstallButton(false);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  // Fonction pour installer l'app
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    // Afficher le prompt d'installation
+    deferredPrompt.prompt();
+
+    // Attendre la réponse de l'utilisateur
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      console.log('✅ Application installée');
+    } else {
+      console.log('❌ Installation annulée');
+    }
+
+    // Nettoyer
+    setDeferredPrompt(null);
+    setShowInstallButton(false);
+  };
 
   // Charger les vrais traitements
   useEffect(() => {
@@ -175,7 +224,18 @@ export default function HomePage() {
           </div>
         )}
 
-
+        {/* Bouton d'installation PWA */}
+        {showInstallButton && (
+          <div className="mb-8 flex justify-center">
+            <button
+              onClick={handleInstallClick}
+              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-4 rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 shadow-lg flex items-center space-x-3 text-lg font-semibold"
+            >
+              <span className="text-2xl">📱</span>
+              <span>Installer MedPlan sur votre appareil</span>
+            </button>
+          </div>
+        )}
 
         {/* Features Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
