@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getAuth } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/firebaseConfig';
 import { ArrowLeft, ArrowRight, Plus, Minus, Pill, Circle, Droplets, Syringe, Tablets, Beaker, Zap, Eye, Headphones, CheckCircle, Package, Star, Square, Wind, Calendar, RotateCw, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { useTreatments } from '../hooks/useTreatments';
-import { addTreatment } from '../services/treatmentService';
+import { addTreatment, updateTreatment } from '../services/treatmentService';
 import { Treatment } from '../types';
 import Toast from '../components/ui/Toast';
 
@@ -24,8 +26,11 @@ interface FormData {
 
 export default function AddTreatment() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const editId = (location.state as any)?.editId as string | undefined;
   const { treatments, setTreatments } = useTreatments();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isEditing, setIsEditing] = useState<boolean>(!!editId);
 
   // États pour les toasts
   const [toast, setToast] = useState({
@@ -47,6 +52,75 @@ export default function AddTreatment() {
     intervalDays: 2,
     cycleConfig: { onDays: 21, offDays: 7 }
   });
+
+  // Préremplir en mode édition
+  useEffect(() => {
+    const loadForEdit = async () => {
+      if (!editId) return;
+      setIsEditing(true);
+
+      // Chercher d'abord dans le hook
+      const found = treatments.find(t => t.id === editId);
+      let treatmentToEdit = found as (Treatment | undefined);
+
+      // Si non trouvé, récupérer depuis Firestore
+      if (!treatmentToEdit) {
+        try {
+          const user = getAuth().currentUser;
+          if (!user) return;
+          const snap = await getDoc(doc(db, `users/${user.uid}/treatments/${editId}`));
+          if (snap.exists()) {
+            const data: any = snap.data();
+            treatmentToEdit = {
+              id: snap.id,
+              name: data.name,
+              type: data.type,
+              dosage: data.dosage,
+              unit: data.unit,
+              color: data.color || '#1DA1F2',
+              icon: data.icon,
+              schedules: data.schedules || [],
+              startDate: data.startDate?.toDate?.() || new Date(),
+              endDate: data.endDate?.toDate?.(),
+              isActive: data.isActive !== false,
+              createdAt: data.createdAt?.toDate?.() || new Date(),
+              taken: data.taken || {}
+            } as Treatment;
+          }
+        } catch (e) {
+          console.error('Erreur chargement traitement pour édition:', e);
+        }
+      }
+
+      if (treatmentToEdit) {
+        // Mapper Treatment -> FormData
+        const firstSchedule = treatmentToEdit.schedules?.[0];
+        const freq = (firstSchedule?.frequency as any) || 'daily';
+        const times = (treatmentToEdit.schedules || []).map(s => s.time);
+        const selectedDays = (firstSchedule?.days as any) || [];
+        const intervalDays = firstSchedule?.intervalDays;
+        const cycle = (firstSchedule as any)?.cycleConfig || {};
+
+        setFormData({
+          name: treatmentToEdit.name || '',
+          type: (treatmentToEdit.type as any) || 'comprime',
+          visualForm: (treatmentToEdit.icon as any) || 'comprime-rond',
+          dosage: Number(treatmentToEdit.dosage) || 0,
+          unit: treatmentToEdit.unit || 'mg',
+          frequency: freq,
+          schedules: times.length > 0 ? times : ['08:00'],
+          startDate: new Date(treatmentToEdit.startDate).toISOString().split('T')[0],
+          endDate: treatmentToEdit.endDate ? new Date(treatmentToEdit.endDate).toISOString().split('T')[0] : undefined,
+          selectedDays: Array.isArray(selectedDays) ? selectedDays : [],
+          intervalDays: intervalDays,
+          cycleConfig: cycle?.onDays || cycle?.offDays ? { onDays: cycle.onDays, offDays: cycle.offDays } : { onDays: 21, offDays: 7 }
+        });
+      }
+    };
+
+    loadForEdit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, treatments]);
 
   const oralTreatmentTypes = [
     { id: 'comprime', label: 'Comprimé', icon: Circle },
@@ -202,38 +276,53 @@ export default function AddTreatment() {
         return;
       }
 
-      // Préparer les données du traitement
-      const newTreatment: Treatment = {
-        id: '', // Sera généré par Firestore
-        name: formData.name,
-        type: formData.type,
-        dosage: formData.dosage,
-        unit: formData.unit,
-        color: '#1DA1F2',
-        icon: formData.visualForm,
-        schedules: formData.schedules.map((time, index) => ({
-          id: `s${index}`,
-          time,
-          frequency: formData.frequency,
-          days: formData.selectedDays,
-          intervalDays: formData.intervalDays,
-          cycleConfig: formData.cycleConfig
-        })),
-        startDate: new Date(formData.startDate),
-        endDate: formData.endDate ? new Date(formData.endDate) : undefined,
-        isActive: true,
-        createdAt: new Date()
-      };
+      const schedules = formData.schedules.map((time, index) => ({
+        id: `s${index}`,
+        time,
+        frequency: formData.frequency,
+        days: formData.selectedDays,
+        intervalDays: formData.intervalDays,
+        cycleConfig: formData.cycleConfig
+      }));
 
-      // Sauvegarder dans Firestore
-      const treatmentId = await addTreatment(user.uid, newTreatment);
+      if (isEditing && editId) {
+        await updateTreatment(user.uid, editId, {
+          name: formData.name,
+          type: formData.type as any,
+          dosage: formData.dosage,
+          unit: formData.unit,
+          icon: formData.visualForm,
+          schedules,
+          startDate: new Date(formData.startDate),
+          endDate: formData.endDate ? new Date(formData.endDate) : undefined
+        });
 
-      showToast('success', 'Traitement enregistré !', 'Votre traitement a été ajouté avec succès');
+        showToast('success', 'Modifications enregistrées', 'Le traitement a été mis à jour');
+      } else {
+        // Préparer les données du traitement (création)
+        const newTreatment: Treatment = {
+          id: '',
+          name: formData.name,
+          type: formData.type,
+          dosage: formData.dosage,
+          unit: formData.unit,
+          color: '#1DA1F2',
+          icon: formData.visualForm,
+          schedules,
+          startDate: new Date(formData.startDate),
+          endDate: formData.endDate ? new Date(formData.endDate) : undefined,
+          isActive: true,
+          createdAt: new Date()
+        };
+
+        await addTreatment(user.uid, newTreatment);
+        showToast('success', 'Traitement enregistré !', 'Votre traitement a été ajouté avec succès');
+      }
 
       // Délai pour laisser voir le toast avant la navigation
       setTimeout(() => {
-        navigate('/dashboard');
-      }, 1500);
+        navigate(isEditing ? '/manage-treatments' : '/dashboard');
+      }, 1200);
 
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);

@@ -331,7 +331,7 @@ export default function Dashboard() {
         <div className="pb-20">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-white">Vos traitements</h2>
-            <button className="flex items-center space-x-1" style={{ color: '#1DA1F2' }}>
+            <button onClick={() => navigate('/manage-treatments')} className="flex items-center space-x-1" style={{ color: '#1DA1F2' }}>
               <Edit className="w-4 h-4" />
               <span>Modifier</span>
             </button>
