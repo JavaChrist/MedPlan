@@ -31,9 +31,10 @@ export async function addTreatment(userId: string, treatment: Treatment): Promis
     const docRef = await addDoc(userTreatmentsRef, treatmentData);
     console.log('Traitement ajouté avec ID:', docRef.id);
     return docRef.id;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors de l\'ajout du traitement:', error);
-    throw new Error('Impossible d\'ajouter le traitement');
+    // Propager l'erreur Firebase pour conserver error.code et error.message
+    throw error;
   }
 }
 
@@ -71,9 +72,9 @@ export async function getTreatments(userId: string): Promise<Treatment[]> {
     });
 
     return treatments;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors de la récupération des traitements:', error);
-    throw new Error('Impossible de récupérer les traitements');
+    throw error;
   }
 }
 
@@ -104,9 +105,9 @@ export async function updateTreatment(
 
     await updateDoc(treatmentRef, updateData);
     console.log('Traitement mis à jour:', treatmentId);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors de la mise à jour du traitement:', error);
-    throw new Error('Impossible de mettre à jour le traitement');
+    throw error;
   }
 }
 
@@ -118,9 +119,9 @@ export async function deleteTreatment(userId: string, treatmentId: string): Prom
     const treatmentRef = doc(db, 'users', userId, 'treatments', treatmentId);
     await deleteDoc(treatmentRef);
     console.log('Traitement supprimé:', treatmentId);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors de la suppression du traitement:', error);
-    throw new Error('Impossible de supprimer le traitement');
+    throw error;
   }
 }
 
@@ -135,8 +136,8 @@ export async function toggleTreatmentStatus(
   try {
     await updateTreatment(userId, treatmentId, { isActive });
     console.log(`Traitement ${isActive ? 'activé' : 'désactivé'}:`, treatmentId);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors du changement de statut:', error);
-    throw new Error('Impossible de changer le statut du traitement');
+    throw error;
   }
 } 
