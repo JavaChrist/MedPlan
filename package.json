@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons:gen": "node scripts/generate-icons.mjs --src public/logo512.png --bg #000000"
   },
   "dependencies": {
     "firebase": "^11.10.0",
@@ -23,6 +24,7 @@
     "postcss": "^8.4.24",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
-    "vite": "^7.0.5"
+    "vite": "^7.0.5",
+    "sharp": "^0.33.5"
   }
 }

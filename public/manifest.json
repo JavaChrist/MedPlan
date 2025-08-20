@@ -1,12 +1,12 @@
 {
-  "short_name": "PWAStarter",
-  "name": "React Vite Tailwind Firebase PWA",
+  "short_name": "MedPlan",
+  "name": "MedPlan",
   "icons": [
-    { "src": "/logo192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/logo512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/logo192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/logo512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  "theme_color": "#3b82f6",
+  "background_color": "#000000"
 }
