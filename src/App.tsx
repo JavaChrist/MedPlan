@@ -8,6 +8,7 @@ import Home from './pages/Home';
 import AddTreatment from './pages/AddTreatment';
 import Profile from './pages/Profile';
 import ManageTreatments from './pages/ManageTreatments';
+import ManageSubjects from './pages/ManageSubjects';
 
 export default function App() {
   return (
@@ -42,6 +43,14 @@ export default function App() {
             <ProtectedRoute>
               <Layout>
                 <ManageTreatments />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/subjects" element={
+            <ProtectedRoute>
+              <Layout>
+                <ManageSubjects />
               </Layout>
             </ProtectedRoute>
           } />

@@ -6,7 +6,8 @@ import { db } from '../firebase/firebaseConfig';
 import { ArrowLeft, ArrowRight, Plus, Minus, Pill, Circle, Droplets, Syringe, Tablets, Beaker, Zap, Eye, Headphones, CheckCircle, Package, Star, Square, Wind, Calendar, RotateCw, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { useTreatments } from '../hooks/useTreatments';
 import { addTreatment, updateTreatment } from '../services/treatmentService';
-import { Treatment } from '../types';
+import { SubjectProfile, Treatment } from '../types';
+import { listSubjects } from '../services/subjectsService';
 import Toast from '../components/ui/Toast';
 
 interface FormData {
@@ -31,6 +32,8 @@ export default function AddTreatment() {
   const { treatments, setTreatments } = useTreatments();
   const [currentStep, setCurrentStep] = useState(1);
   const [isEditing, setIsEditing] = useState<boolean>(!!editId);
+  const [subjects, setSubjects] = useState<SubjectProfile[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | undefined>(undefined);
 
   // États pour les toasts
   const [toast, setToast] = useState({
@@ -55,6 +58,14 @@ export default function AddTreatment() {
 
   // Préremplir en mode édition
   useEffect(() => {
+    // Charger les profils pour associer un traitement
+    (async () => {
+      const user = getAuth().currentUser;
+      if (!user) return;
+      const list = await listSubjects(user.uid);
+      setSubjects(list);
+    })();
+
     const loadForEdit = async () => {
       if (!editId) return;
       setIsEditing(true);
@@ -115,6 +126,7 @@ export default function AddTreatment() {
           intervalDays: intervalDays,
           cycleConfig: cycle?.onDays || cycle?.offDays ? { onDays: cycle.onDays, offDays: cycle.offDays } : { onDays: 21, offDays: 7 }
         });
+        setSelectedSubjectId(treatmentToEdit.subjectId);
       }
     };
 
@@ -294,7 +306,9 @@ export default function AddTreatment() {
           icon: formData.visualForm,
           schedules,
           startDate: new Date(formData.startDate),
-          endDate: formData.endDate ? new Date(formData.endDate) : undefined
+          endDate: formData.endDate ? new Date(formData.endDate) : undefined,
+          subjectId: selectedSubjectId,
+          subjectName: subjects.find(s=>s.id===selectedSubjectId)?.name
         });
 
         showToast('success', 'Modifications enregistrées', 'Le traitement a été mis à jour');
@@ -312,7 +326,9 @@ export default function AddTreatment() {
           startDate: new Date(formData.startDate),
           endDate: formData.endDate ? new Date(formData.endDate) : undefined,
           isActive: true,
-          createdAt: new Date()
+          createdAt: new Date(),
+          subjectId: selectedSubjectId,
+          subjectName: subjects.find(s=>s.id===selectedSubjectId)?.name
         };
 
         await addTreatment(user.uid, newTreatment);
@@ -345,6 +361,25 @@ export default function AddTreatment() {
                 onChange={(e) => updateFormData({ name: e.target.value })}
                 className="w-full p-4 rounded-lg text-white bg-gray-800 border border-gray-700 placeholder-gray-400 focus:border-blue-500 focus:outline-none"
               />
+            </div>
+
+            {/* Profil associé (personne/animal) */}
+            <div>
+              <h2 className="text-xl font-bold text-white mb-4">Associer à un profil</h2>
+              {subjects.length === 0 ? (
+                <p className="text-gray-400 text-sm">Aucun profil. Vous pourrez en créer un dans "Profils".</p>
+              ) : (
+                <select
+                  value={selectedSubjectId || ''}
+                  onChange={(e)=>setSelectedSubjectId(e.target.value || undefined)}
+                  className="w-full p-4 rounded-lg text-white bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Moi</option>
+                  {subjects.map(s=> (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Type de traitement */}

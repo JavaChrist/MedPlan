@@ -12,6 +12,8 @@ export interface Treatment {
   isActive: boolean;
   createdAt: Date;
   taken?: { [date: string]: boolean }; // dates où le traitement a été pris (format YYYY-MM-DD)
+  subjectId?: string; // Identifiant du profil (enfant, conjoint, animal, etc.)
+  subjectName?: string; // Dénomination conviviale (facultatif, duplicatif pour affichage rapide)
 }
 
 export interface Schedule {
@@ -41,3 +43,12 @@ export interface DayPlan {
   date: Date;
   takes: TreatmentTake[];
 } 
+
+export interface SubjectProfile {
+  id: string;
+  name: string; // Prénom ou nom de l'animal/personne
+  relation?: 'self' | 'child' | 'partner' | 'pet' | 'other';
+  color?: string; // Couleur pour pastille/avatar
+  avatarUrl?: string; // Optionnel
+  createdAt: Date;
+}

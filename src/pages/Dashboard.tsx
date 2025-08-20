@@ -345,7 +345,7 @@ export default function Dashboard() {
               >
                 <MedicationIcon treatment={treatment} />
                 <div className="flex-1">
-                  <p className="font-medium text-white">{treatment.name}</p>
+                  <p className="font-medium text-white">{treatment.name}{treatment.subjectName ? ` • ${treatment.subjectName}` : ''}</p>
                   <p className="text-sm" style={{ color: '#B3B3B3' }}>
                     {treatment.type === 'comprime' ? 'Comprimé' :
                       treatment.type === 'gelule' ? 'Gélule' :
@@ -358,13 +358,18 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            <button
+            <div className="flex items-center justify-between mt-2">
+              <button
               onClick={() => navigate('/add-treatment')}
               className="w-full py-3 text-center"
               style={{ color: '#1DA1F2' }}
             >
               Ajouter un traitement
             </button>
+              <button onClick={()=>navigate('/subjects')} className="w-full py-3 text-center" style={{ color: '#1DA1F2' }}>
+                Profils
+              </button>
+            </div>
           </div>
         </div>
       </div>
