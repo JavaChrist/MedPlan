@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTreatments } from '../hooks/useTreatments';
-import { Treatment, TreatmentTake } from '../types';
+import { SubjectProfile, Treatment, TreatmentTake } from '../types';
+import { listSubjects } from '../services/subjectsService';
 import { Plus, Check, Clock, Pill, Circle, Heart, Users, Grid3X3, Edit } from 'lucide-react';
 
 export default function Dashboard() {
@@ -10,16 +11,38 @@ export default function Dashboard() {
 
   // État pour la date sélectionnée
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [subjects, setSubjects] = useState<SubjectProfile[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ALL'); // 'ALL' | 'ME' | subjectId
 
   // Générer les prises pour la date sélectionnée (seulement quand nécessaire)
   useEffect(() => {
     ensureTakesForDate(selectedDate);
   }, [selectedDate, treatments, ensureTakesForDate]);
 
+  // Charger les profils (sujets)
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await listSubjects((window as any).firebaseAuth?.currentUser?.uid || (await import('firebase/auth')).getAuth().currentUser?.uid || '');
+        if (Array.isArray(list)) setSubjects(list);
+      } catch (_) {
+        // ignore en mode démo
+      }
+    })();
+  }, []);
+
   // Obtenir les prises pour la date sélectionnée
   const selectedDateTakes = getTakesForDate(selectedDate);
-  const pendingTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'pending');
-  const takenTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'taken');
+
+  const subjectMatches = (treatment?: Treatment): boolean => {
+    if (!treatment) return false;
+    if (selectedSubjectId === 'ALL') return true;
+    if (selectedSubjectId === 'ME') return !treatment.subjectId;
+    return treatment.subjectId === selectedSubjectId;
+  };
+
+  const pendingTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'pending' && subjectMatches(getTreatmentForTake(take)));
+  const takenTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'taken' && subjectMatches(getTreatmentForTake(take)));
 
   // Obtenir le traitement pour une prise
   const getTreatmentForTake = (take: TreatmentTake): Treatment | undefined => {
@@ -81,10 +104,10 @@ export default function Dashboard() {
   };
 
   // Grouper les prises prises par heure
-  const groupTakenTakesByTime = () => {
+  const groupTakenTakesByTime = (source: TreatmentTake[]) => {
     const grouped: { [key: string]: { time: string, takes: Array<{ treatment: Treatment, take: TreatmentTake }> } } = {};
 
-    takenTakes.forEach((take: TreatmentTake) => {
+    source.forEach((take: TreatmentTake) => {
       if (take.takenTime) {
         const timeKey = formatTime(take.takenTime);
         const treatment = getTreatmentForTake(take);
@@ -102,10 +125,10 @@ export default function Dashboard() {
   };
 
   // Grouper les prises à faire par heure
-  const groupPendingTakesByTime = () => {
+  const groupPendingTakesByTime = (source: TreatmentTake[]) => {
     const grouped: { [key: string]: { time: string, takes: Array<{ treatment: Treatment, take: TreatmentTake }> } } = {};
 
-    pendingTakes.forEach((take: TreatmentTake) => {
+    source.forEach((take: TreatmentTake) => {
       const timeKey = formatTime(take.plannedTime);
       const treatment = getTreatmentForTake(take);
 
@@ -133,8 +156,8 @@ export default function Dashboard() {
   );
 
   const extendedDays = generateExtendedDays();
-  const groupedTakenTakes = groupTakenTakesByTime();
-  const groupedPendingTakes = groupPendingTakesByTime();
+  const groupedTakenTakes = groupTakenTakesByTime(takenTakes);
+  const groupedPendingTakes = groupPendingTakesByTime(pendingTakes);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Gérer le scroll et centrer sur la date sélectionnée
@@ -171,6 +194,27 @@ export default function Dashboard() {
         <h1 className="text-xl font-bold text-white text-center capitalize">
           {formatSelectedDate()}
         </h1>
+      </div>
+
+      {/* Sélecteur de profil */}
+      <div className="px-4 pt-4">
+        <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+          <button
+            onClick={() => setSelectedSubjectId('ALL')}
+            className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === 'ALL' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
+          >Tous</button>
+          <button
+            onClick={() => setSelectedSubjectId('ME')}
+            className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === 'ME' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
+          >Moi</button>
+          {subjects.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSubjectId(s.id)}
+              className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === s.id ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
+            >{s.name}</button>
+          ))}
+        </div>
       </div>
 
       {/* Timeline journalière scrollable */}
@@ -360,13 +404,13 @@ export default function Dashboard() {
             ))}
             <div className="flex items-center justify-between mt-2">
               <button
-              onClick={() => navigate('/add-treatment')}
-              className="w-full py-3 text-center"
-              style={{ color: '#1DA1F2' }}
-            >
-              Ajouter un traitement
-            </button>
-              <button onClick={()=>navigate('/subjects')} className="w-full py-3 text-center" style={{ color: '#1DA1F2' }}>
+                onClick={() => navigate('/add-treatment')}
+                className="w-full py-3 text-center"
+                style={{ color: '#1DA1F2' }}
+              >
+                Ajouter un traitement
+              </button>
+              <button onClick={() => navigate('/subjects')} className="w-full py-3 text-center" style={{ color: '#1DA1F2' }}>
                 Profils
               </button>
             </div>
