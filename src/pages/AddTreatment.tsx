@@ -340,9 +340,12 @@ export default function AddTreatment() {
         navigate(isEditing ? '/manage-treatments' : '/dashboard');
       }, 1200);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur lors de la sauvegarde:', error);
-      showToast('error', 'Erreur de sauvegarde', 'Impossible d\'enregistrer le traitement. Veuillez réessayer.');
+      const code = error?.code || 'unknown';
+      const message = error?.message || '';
+      const details = message?.toString().slice(0, 300);
+      showToast('error', `Erreur Firebase: ${code}`, details || "Impossible d'enregistrer le traitement");
     }
   };
 
