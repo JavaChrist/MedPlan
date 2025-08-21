@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { Heart, Users, Grid3X3 } from 'lucide-react';
+import { Heart, Users, Grid3X3, User } from 'lucide-react';
 
-type ActiveTab = 'dashboard' | 'subjects' | 'browse';
+type ActiveTab = 'dashboard' | 'subjects' | 'browse' | 'account';
 
 export default function TabBar({ active }: { active: ActiveTab }) {
   const navigate = useNavigate();
@@ -28,7 +28,10 @@ export default function TabBar({ active }: { active: ActiveTab }) {
         <Grid3X3 className="w-5 h-5" style={{ color: isActive('browse') ? activeColor : inactiveColor }} />
         <span className="text-xs" style={{ color: isActive('browse') ? activeColor : inactiveColor }}>Parcourir</span>
       </button>
-      <button onClick={() => navigate('/profile')} className="hidden" aria-hidden="true" />
+      <button onClick={() => navigate('/profile')} className="flex flex-col items-center space-y-1">
+        <User className="w-5 h-5" style={{ color: isActive('account') ? activeColor : inactiveColor }} />
+        <span className="text-xs" style={{ color: isActive('account') ? activeColor : inactiveColor }}>Compte</span>
+      </button>
     </div>
   );
 }

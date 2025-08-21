@@ -9,7 +9,7 @@ export default function Profile() {
   const navigate = useNavigate();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-3 pb-20 pt-6 mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Profil utilisateur</h1>
         <p className="text-gray-600">Gérez vos informations personnelles</p>

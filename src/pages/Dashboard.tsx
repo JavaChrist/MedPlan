@@ -207,7 +207,7 @@ export default function Dashboard() {
       </div>
 
       {/* Sélecteur de profil */}
-      <div className="px-4 pt-4">
+      <div className="px-2 sm:px-3 pt-4">
         <div className="flex items-center space-x-2 overflow-x-auto pb-2">
           <button
             onClick={() => setSelectedSubjectId('ALL')}
@@ -228,7 +228,7 @@ export default function Dashboard() {
       </div>
 
       {/* Timeline journalière scrollable */}
-      <div className="px-4 pt-8 pb-6 relative z-0">
+      <div className="px-2 sm:px-3 pt-8 pb-6 relative z-0">
         <div
           ref={scrollRef}
           className="flex items-center space-x-4 overflow-x-auto scrollbar-hide py-4"
@@ -259,7 +259,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 space-y-6">
+      <div className="w-full px-2 sm:px-3 space-y-6 max-w-none">
 
         {/* Section: Enregistrer */}
         <div>

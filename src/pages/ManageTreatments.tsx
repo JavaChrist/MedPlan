@@ -80,7 +80,7 @@ export default function ManageTreatments() {
 	};
 
 	return (
-		<div className="min-h-screen bg-black text-white px-4 pb-20 pt-6 max-w-md mx-auto">
+		<div className="min-h-screen bg-black text-white px-2 sm:px-3 pb-20 pt-6 mx-auto">
 			<div className="flex items-center space-x-3 mb-6">
 				<h1 className="text-xl font-bold">Gérer vos traitements</h1>
 			</div>
