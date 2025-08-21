@@ -1,53 +1,72 @@
 import { useState, useEffect } from 'react';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { Treatment, TreatmentTake, DayPlan } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 export function useTreatments() {
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [takes, setTakes] = useState<TreatmentTake[]>([]);
   const [loading, setLoading] = useState(true);
+  const { currentUser } = useAuth();
 
   // Charger les traitements depuis Firestore en temps réel
   useEffect(() => {
-    const user = getAuth().currentUser;
-    if (!user) {
-      setLoading(false);
-      return;
+    let unsubscribe: (() => void) | undefined;
+    const auth = getAuth();
+
+    const attach = (uid: string) => {
+      const q = query(
+        collection(db, `users/${uid}/treatments`),
+        orderBy('createdAt', 'desc')
+      );
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: Treatment[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          list.push({
+            id: doc.id,
+            name: data.name,
+            type: data.type,
+            dosage: data.dosage,
+            unit: data.unit,
+            color: data.color || '#1DA1F2',
+            icon: data.icon,
+            schedules: data.schedules || [],
+            startDate: data.startDate?.toDate() || new Date(),
+            endDate: data.endDate?.toDate(),
+            isActive: data.isActive !== false,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            taken: data.taken || {}
+          } as Treatment);
+        });
+        setTreatments(list);
+        setLoading(false);
+      });
+    };
+
+    if (currentUser?.uid) {
+      attach(currentUser.uid);
+    } else {
+      const off = onAuthStateChanged(auth, (user) => {
+        if (user?.uid) {
+          attach(user.uid);
+        } else {
+          setLoading(false);
+          setTreatments([]);
+        }
+      });
+      return () => {
+        off();
+        if (unsubscribe) unsubscribe();
+      };
     }
 
-    const q = query(
-      collection(db, `users/${user.uid}/treatments`),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Treatment[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        list.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          dosage: data.dosage,
-          unit: data.unit,
-          color: data.color || '#1DA1F2',
-          icon: data.icon,
-          schedules: data.schedules || [],
-          startDate: data.startDate?.toDate() || new Date(),
-          endDate: data.endDate?.toDate(),
-          isActive: data.isActive !== false,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          taken: data.taken || {}
-        } as Treatment);
-      });
-      setTreatments(list);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentUser?.uid]);
 
   // Générer les prises pour une date donnée
   const generateTakesForDate = (targetDate: Date) => {

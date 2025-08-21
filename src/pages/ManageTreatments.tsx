@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, onSnapshot, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { Treatment } from '../types';
@@ -11,38 +11,42 @@ export default function ManageTreatments() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const user = getAuth().currentUser;
-    if (!user) return;
-
-    const q = query(
-      collection(db, `users/${user.uid}/treatments`),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Treatment[] = [];
-      snapshot.forEach((d) => {
-        const data = d.data();
-        list.push({
-          id: d.id,
-          name: data.name,
-          type: data.type,
-          dosage: data.dosage,
-          unit: data.unit,
-          color: data.color || '#1DA1F2',
-          icon: data.icon,
-          schedules: data.schedules || [],
-          startDate: data.startDate?.toDate() || new Date(),
-          endDate: data.endDate?.toDate(),
-          isActive: data.isActive !== false,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          taken: data.taken || {}
-        } as Treatment);
+    let unsubscribe: (()=>void) | undefined;
+    const auth = getAuth();
+    const attach = (uid: string) => {
+      const q = query(
+        collection(db, `users/${uid}/treatments`),
+        orderBy('createdAt', 'desc')
+      );
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: Treatment[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data();
+          list.push({
+            id: d.id,
+            name: data.name,
+            type: data.type,
+            dosage: data.dosage,
+            unit: data.unit,
+            color: data.color || '#1DA1F2',
+            icon: data.icon,
+            schedules: data.schedules || [],
+            startDate: data.startDate?.toDate() || new Date(),
+            endDate: data.endDate?.toDate(),
+            isActive: data.isActive !== false,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            taken: data.taken || {}
+          } as Treatment);
+        });
+        setTreatments(list);
       });
-      setTreatments(list);
+    };
+    const user = auth.currentUser;
+    if (user?.uid) attach(user.uid);
+    const off = onAuthStateChanged(auth, (u)=>{
+      if (u?.uid) attach(u.uid);
     });
-
-    return () => unsubscribe();
+    return ()=>{ off(); if (unsubscribe) unsubscribe(); };
   }, []);
 
   const toggleActive = async (treatment: Treatment) => {

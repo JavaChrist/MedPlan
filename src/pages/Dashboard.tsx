@@ -191,9 +191,16 @@ export default function Dashboard() {
     <div style={{ backgroundColor: '#000' }} className="min-h-screen w-full">
       {/* En-tête avec date - position fixe */}
       <div className="sticky top-0 z-10 px-6 pt-8 pb-4" style={{ backgroundColor: '#000' }}>
-        <h1 className="text-xl font-bold text-white text-center capitalize">
-          {formatSelectedDate()}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-white capitalize">{formatSelectedDate()}</h1>
+          <button
+            onClick={async ()=>{
+              const { requestNotificationPermission } = await import('../services/notificationService');
+              await requestNotificationPermission();
+            }}
+            className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded-lg"
+          >Notifications</button>
+        </div>
       </div>
 
       {/* Sélecteur de profil */}
