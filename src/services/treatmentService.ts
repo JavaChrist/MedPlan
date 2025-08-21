@@ -12,6 +12,29 @@ import {
 import { db } from '../firebase/firebaseConfig';
 import { Treatment } from '../types';
 
+// Supprime récursivement les champs undefined pour compatibilité Firestore
+function sanitizeForFirestore<T>(input: T): T {
+  if (Array.isArray(input)) {
+    // @ts-ignore
+    return input.map(sanitizeForFirestore) as T;
+  }
+  if (input !== null && typeof input === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(input as any)) {
+      if (value === undefined) continue;
+      if (Array.isArray(value)) {
+        result[key] = value.map(sanitizeForFirestore);
+      } else if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+        result[key] = sanitizeForFirestore(value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result as T;
+  }
+  return input;
+}
+
 /**
  * Ajoute un nouveau traitement pour un utilisateur
  */
@@ -20,13 +43,13 @@ export async function addTreatment(userId: string, treatment: Treatment): Promis
     const userTreatmentsRef = collection(db, 'users', userId, 'treatments');
 
     // Préparer les données avec timestamps
-    const treatmentData = {
+    const treatmentData = sanitizeForFirestore({
       ...treatment,
       startDate: new Date(treatment.startDate),
       endDate: treatment.endDate ? new Date(treatment.endDate) : null,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now()
-    };
+    });
 
     const docRef = await addDoc(userTreatmentsRef, treatmentData);
     console.log('Traitement ajouté avec ID:', docRef.id);
@@ -90,10 +113,10 @@ export async function updateTreatment(
     const treatmentRef = doc(db, 'users', userId, 'treatments', treatmentId);
 
     // Préparer les données de mise à jour
-    const updateData: any = {
+    const updateData: any = sanitizeForFirestore({
       ...data,
       updatedAt: Timestamp.now()
-    };
+    });
 
     // Convertir les dates si présentes
     if (data.startDate) {

@@ -307,8 +307,8 @@ export default function AddTreatment() {
           schedules,
           startDate: new Date(formData.startDate),
           endDate: formData.endDate ? new Date(formData.endDate) : undefined,
-          subjectId: selectedSubjectId,
-          subjectName: subjects.find(s=>s.id===selectedSubjectId)?.name
+          subjectId: selectedSubjectId || undefined,
+          subjectName: selectedSubjectId ? subjects.find(s=>s.id===selectedSubjectId)?.name : undefined
         });
 
         showToast('success', 'Modifications enregistrées', 'Le traitement a été mis à jour');
@@ -327,8 +327,8 @@ export default function AddTreatment() {
           endDate: formData.endDate ? new Date(formData.endDate) : undefined,
           isActive: true,
           createdAt: new Date(),
-          subjectId: selectedSubjectId,
-          subjectName: subjects.find(s=>s.id===selectedSubjectId)?.name
+          subjectId: selectedSubjectId || undefined,
+          subjectName: selectedSubjectId ? subjects.find(s=>s.id===selectedSubjectId)?.name : undefined
         };
 
         await addTreatment(user.uid, newTreatment);
