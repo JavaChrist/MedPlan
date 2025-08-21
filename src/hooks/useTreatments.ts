@@ -5,6 +5,19 @@ import { db } from '../firebase/firebaseConfig';
 import { Treatment, TreatmentTake, DayPlan } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
+// Convertit un champ Firestore (Timestamp/Date/string/number) en Date JS
+function coerceDate(value: any, fallback: Date = new Date()): Date {
+  try {
+    if (value?.toDate) return value.toDate();
+    if (value instanceof Date) return value;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return d;
+    }
+  } catch {}
+  return fallback;
+}
+
 export function useTreatments() {
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [takes, setTakes] = useState<TreatmentTake[]>([]);
@@ -34,14 +47,15 @@ export function useTreatments() {
             color: data.color || '#1DA1F2',
             icon: data.icon,
             schedules: data.schedules || [],
-            startDate: data.startDate?.toDate() || new Date(),
-            endDate: data.endDate?.toDate(),
+            startDate: coerceDate(data.startDate),
+            endDate: data.endDate ? coerceDate(data.endDate) : undefined,
             isActive: data.isActive !== false,
-            createdAt: data.createdAt?.toDate() || new Date(),
+            createdAt: coerceDate(data.createdAt),
             taken: data.taken || {}
           } as Treatment);
         });
         setTreatments(list);
+        try { console.log('[useTreatments] uid=', uid, 'count=', list.length); } catch { }
         setLoading(false);
       });
     };

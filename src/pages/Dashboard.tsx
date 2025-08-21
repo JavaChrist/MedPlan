@@ -48,6 +48,7 @@ export default function Dashboard() {
   const getTreatmentForTake = (take: TreatmentTake): Treatment | undefined => {
     return treatments.find(t => t.id === take.treatmentId);
   };
+  try { console.log('[Dashboard] treatments=', treatments.map(t => ({ id: t.id, name: t.name, subjectId: t.subjectId }))); } catch { }
 
   // Formater l'heure
   const formatTime = (date: Date) => {
@@ -194,7 +195,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-white capitalize">{formatSelectedDate()}</h1>
           <button
-            onClick={async ()=>{
+            onClick={async () => {
               const { requestNotificationPermission } = await import('../services/notificationService');
               await requestNotificationPermission();
             }}

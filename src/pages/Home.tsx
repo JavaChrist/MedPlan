@@ -112,7 +112,7 @@ export default function Home() {
           startDate: data.startDate?.toDate() || new Date(),
           endDate: data.endDate?.toDate(),
           isActive: data.isActive !== false,
-          createdAt: data.createdAt?.toDate() || new Date(),
+          createdAt: (data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date())),
           taken: data.taken || {}
         } as Treatment);
       });
