@@ -35,24 +35,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // MODE DEMO - utilisateur factice pour tester sans Firebase
-  const demoUser = {
-    uid: 'demo-user',
-    email: 'demo@example.com',
-    displayName: 'Utilisateur Demo',
-    emailVerified: true,
-    metadata: {
-      creationTime: '2024-01-01T00:00:00.000Z',
-      lastSignInTime: new Date().toISOString()
-    }
-  } as User;
-
   const login = async (email: string, password: string) => {
-    // Mode demo - simule une connexion réussie
-    if (email === 'demo@example.com' && password === 'demo123') {
-      setCurrentUser(demoUser);
-      return;
-    }
     await signInWithEmailAndPassword(auth, email, password);
   };
 
@@ -68,18 +51,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   useEffect(() => {
-    // MODE DEMO - connecte automatiquement l'utilisateur demo
-    setCurrentUser(demoUser);
-    setLoading(false);
-
-    /* Configuration Firebase normale (décommentez quand Firebase est configuré)
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
     });
-
     return unsubscribe;
-    */
   }, []);
 
   const value: AuthContextType = {
