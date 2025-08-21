@@ -4,16 +4,18 @@ import { useTreatments } from '../hooks/useTreatments';
 import { SubjectProfile, Treatment, TreatmentTake } from '../types';
 import { listSubjects } from '../services/subjectsService';
 import { Plus, Check, Clock, Pill, Circle, Edit } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
+import { updateTreatment as updateTreatmentDoc } from '../services/treatmentService';
 import TabBar from '../components/layout/TabBar';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { treatments, getTakesForDate, ensureTakesForDate, markAsTaken } = useTreatments();
+  const { treatments, getTakesForDate, ensureTakesForDate, markAsTaken, setTreatments, setTakes } = useTreatments();
 
   // État pour la date sélectionnée
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [subjects, setSubjects] = useState<SubjectProfile[]>([]);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ALL'); // 'ALL' | 'ME' | subjectId
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ME'); // 'ME' | subjectId
 
   // Générer les prises pour la date sélectionnée (seulement quand nécessaire)
   useEffect(() => {
@@ -42,7 +44,6 @@ export default function Dashboard() {
 
   const subjectMatches = (treatment?: Treatment): boolean => {
     if (!treatment) return false;
-    if (selectedSubjectId === 'ALL') return true;
     if (selectedSubjectId === 'ME') return !treatment.subjectId || treatment.subjectId === '' || treatment.subjectId === null;
     return (treatment.subjectId || '') === selectedSubjectId;
   };
@@ -61,6 +62,14 @@ export default function Dashboard() {
     });
   };
 
+  // Clé de date locale (évite les décalages UTC)
+  const formatLocalDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
   // Type pour un jour dans la timeline
   interface TimelineDay {
     date: Date;
@@ -68,6 +77,9 @@ export default function Dashboard() {
     isToday: boolean;
     isSelected: boolean;
     dayOffset: number;
+    hasTaken: boolean;
+    completionRatio: number;
+    skippedRatio: number;
   }
 
   // Générer les jours avec une plage étendue (30 jours avant et après aujourd'hui)
@@ -84,13 +96,33 @@ export default function Dashboard() {
       const dayOfWeek = date.getDay();
       const isToday = i === 0;
       const isSelected = date.toDateString() === selectedDate.toDateString();
+      const dateStr = formatLocalDateKey(date);
+      const hasTaken = treatments
+        .filter(t => subjectMatches(t))
+        .some(t => Boolean(t.taken?.[dateStr]));
+
+      // Ratio pour le jour sélectionné (progression réelle), sinon binaire
+      let completionRatio = 0;
+      let skippedRatio = 0;
+      if (date.toDateString() === selectedDate.toDateString()) {
+        const skippedCount = selectedDateTakes.filter(t => t.status === 'skipped' && subjectMatches(getTreatmentForTake(t))).length;
+        const total = pendingTakes.length + takenTakes.length + skippedCount;
+        completionRatio = total > 0 ? takenTakes.length / total : (hasTaken ? 1 : 0);
+        skippedRatio = total > 0 ? skippedCount / total : 0;
+      } else {
+        completionRatio = hasTaken ? 1 : 0;
+        skippedRatio = 0;
+      }
 
       days.push({
         date: date,
         label: dayLabels[dayOfWeek],
         isToday,
         isSelected,
-        dayOffset: i
+        dayOffset: i,
+        hasTaken,
+        completionRatio,
+        skippedRatio
       });
     }
 
@@ -163,6 +195,36 @@ export default function Dashboard() {
   const groupedPendingTakes = groupPendingTakesByTime(pendingTakes);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Marquer une prise comme prise et mettre à jour le traitement (pour la timeline)
+  const handleMarkTaken = async (take: TreatmentTake) => {
+    try {
+      // 1) Marquer la prise localement (timeline cartes)
+      markAsTaken(take.id);
+
+      // 2) Trouver le traitement et mettre à jour le champ taken (optimiste + Firestore)
+      const treatment = getTreatmentForTake(take);
+      if (!treatment) return;
+      const dateStr = formatLocalDateKey(take.plannedTime);
+      const newTaken = { ...(treatment.taken || {}), [dateStr]: true } as any;
+
+      // Optimiste côté état
+      setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, taken: newTaken } : t));
+
+      // Persistant côté Firestore
+      const user = getAuth().currentUser;
+      if (user) {
+        await updateTreatmentDoc(user.uid, treatment.id!, { taken: newTaken });
+      }
+    } catch (e) {
+      console.error('Erreur mark taken:', e);
+    }
+  };
+
+  // Marquer une prise comme "non pris" (skipped)
+  const handleSkipTake = (take: TreatmentTake) => {
+    setTakes(prev => prev.map(t => t.id === take.id ? { ...t, status: 'skipped' as const } : t));
+  };
+
   // Gérer le scroll et centrer sur la date sélectionnée
   const handleDayClick = (date: Date) => {
     setSelectedDate(date);
@@ -210,10 +272,6 @@ export default function Dashboard() {
       <div className="px-2 sm:px-3 pt-4">
         <div className="flex items-center space-x-2 overflow-x-auto pb-2">
           <button
-            onClick={() => setSelectedSubjectId('ALL')}
-            className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === 'ALL' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
-          >Tous</button>
-          <button
             onClick={() => setSelectedSubjectId('ME')}
             className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === 'ME' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
           >Moi</button>
@@ -241,15 +299,21 @@ export default function Dashboard() {
               style={{ scrollSnapAlign: 'center' }}
               onClick={() => handleDayClick(day.date)}
             >
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium transition-all duration-200 ${day.isSelected ? 'transform scale-110' : ''
-                  }`}
-                style={{
-                  backgroundColor: day.isSelected ? '#1DA1F2' : '#4AA8F0',
-                  opacity: day.isSelected ? 1 : (day.dayOffset < 0 ? 0.5 : day.dayOffset > 0 ? 0.6 : 0.8)
-                }}
-              >
-                {day.label}
+              <div className={`relative w-10 h-10 rounded-full flex items-center justify-center font-medium transition-all duration-200 ${day.isSelected ? 'transform scale-110' : ''}`}>
+                {/* Fond (anneau) */}
+                <div className="absolute inset-0 rounded-full" style={{ border: '2px solid #1DA1F2', opacity: day.isSelected ? 1 : (day.dayOffset < 0 ? 0.5 : day.dayOffset > 0 ? 0.6 : 0.8) }} />
+                {/* Remplissage progressif (pris) */}
+                <div className="absolute inset-0 overflow-hidden rounded-full" style={{ opacity: day.isSelected ? 1 : (day.dayOffset < 0 ? 0.5 : day.dayOffset > 0 ? 0.6 : 0.8) }}>
+                  <div className="absolute left-0 top-0 h-full" style={{ width: `${Math.min(100, Math.max(0, Math.round(day.completionRatio * 100)))}%`, backgroundColor: '#1DA1F2' }} />
+                </div>
+                {/* Indicateur fin pour non pris (skipped) */}
+                {day.skippedRatio > 0 && (
+                  <div className="absolute inset-0 overflow-hidden rounded-full" style={{ pointerEvents: 'none', opacity: day.isSelected ? 1 : (day.dayOffset < 0 ? 0.5 : day.dayOffset > 0 ? 0.6 : 0.8) }}>
+                    <div className="absolute right-0 top-0 h-full" style={{ width: `${Math.min(100, Math.max(0, Math.round(day.skippedRatio * 100)))}%`, backgroundColor: '#64748B' }} />
+                  </div>
+                )}
+                {/* Lettre du jour */}
+                <span className="relative" style={{ color: day.completionRatio > 0 ? '#ffffff' : '#1DA1F2' }}>{day.label}</span>
               </div>
               {day.isToday && (
                 <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white mt-1"></div>
@@ -309,13 +373,13 @@ export default function Dashboard() {
                         {/* Boutons de validation */}
                         <div className="space-y-1.5">
                           <button
-                            onClick={() => markAsTaken(take.id)}
+                            onClick={() => handleMarkTaken(take)}
                             className="w-full py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors"
                           >
                             Pris
                           </button>
                           <button
-                            onClick={() => {/* TODO: gérer "non pris" */ }}
+                            onClick={() => handleSkipTake(take)}
                             className="w-full py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors"
                           >
                             Non pris
@@ -412,18 +476,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            <div className="flex items-center justify-between mt-2">
-              <button
-                onClick={() => navigate('/add-treatment')}
-                className="w-full py-3 text-center"
-                style={{ color: '#1DA1F2' }}
-              >
-                Ajouter un traitement
-              </button>
-              <button onClick={() => navigate('/subjects')} className="w-full py-3 text-center" style={{ color: '#1DA1F2' }}>
-                Profils
-              </button>
-            </div>
+            {/* liens secondaires supprimés */}
           </div>
         </div>
       </div>

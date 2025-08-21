@@ -3,6 +3,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useNavigate } from 'react-router-dom';
+import TabBar from '../components/layout/TabBar';
 
 export default function Profile() {
   const { currentUser, logout } = useAuth();
@@ -90,6 +91,7 @@ export default function Profile() {
           </Card>
         </div>
       </div>
+      <TabBar active="account" />
     </div>
   );
 } 

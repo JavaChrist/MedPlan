@@ -18,15 +18,15 @@ export default function TabBar({ active }: { active: ActiveTab }) {
     >
       <button onClick={() => navigate('/dashboard')} className="flex flex-col items-center space-y-1">
         <Heart className="w-5 h-5" style={{ color: isActive('dashboard') ? activeColor : inactiveColor }} />
-        <span className="text-xs" style={{ color: isActive('dashboard') ? activeColor : inactiveColor }}>Résumé</span>
+        <span className="text-xs" style={{ color: isActive('dashboard') ? activeColor : inactiveColor }}>Accueil</span>
       </button>
       <button onClick={() => navigate('/subjects')} className="flex flex-col items-center space-y-1">
         <Users className="w-5 h-5" style={{ color: isActive('subjects') ? activeColor : inactiveColor }} />
-        <span className="text-xs" style={{ color: isActive('subjects') ? activeColor : inactiveColor }}>Partage</span>
+        <span className="text-xs" style={{ color: isActive('subjects') ? activeColor : inactiveColor }}>Profil</span>
       </button>
       <button onClick={() => navigate('/manage-treatments')} className="flex flex-col items-center space-y-1">
         <Grid3X3 className="w-5 h-5" style={{ color: isActive('browse') ? activeColor : inactiveColor }} />
-        <span className="text-xs" style={{ color: isActive('browse') ? activeColor : inactiveColor }}>Parcourir</span>
+        <span className="text-xs" style={{ color: isActive('browse') ? activeColor : inactiveColor }}>Traitements</span>
       </button>
       <button onClick={() => navigate('/profile')} className="flex flex-col items-center space-y-1">
         <User className="w-5 h-5" style={{ color: isActive('account') ? activeColor : inactiveColor }} />
