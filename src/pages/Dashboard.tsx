@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTreatments } from '../hooks/useTreatments';
 import { SubjectProfile, Treatment, TreatmentTake } from '../types';
 import { listSubjects } from '../services/subjectsService';
-import { Plus, Check, Clock, Pill, Circle, Heart, Users, Grid3X3, Edit } from 'lucide-react';
+import { Plus, Check, Clock, Pill, Circle, Edit } from 'lucide-react';
+import TabBar from '../components/layout/TabBar';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -34,20 +35,21 @@ export default function Dashboard() {
   // Obtenir les prises pour la date sélectionnée
   const selectedDateTakes = getTakesForDate(selectedDate);
 
+  // Obtenir le traitement pour une prise (doit être défini avant usage)
+  const getTreatmentForTake = (take: TreatmentTake): Treatment | undefined => {
+    return treatments.find(t => t.id === take.treatmentId);
+  };
+
   const subjectMatches = (treatment?: Treatment): boolean => {
     if (!treatment) return false;
     if (selectedSubjectId === 'ALL') return true;
-    if (selectedSubjectId === 'ME') return !treatment.subjectId;
-    return treatment.subjectId === selectedSubjectId;
+    if (selectedSubjectId === 'ME') return !treatment.subjectId || treatment.subjectId === '' || treatment.subjectId === null;
+    return (treatment.subjectId || '') === selectedSubjectId;
   };
 
   const pendingTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'pending' && subjectMatches(getTreatmentForTake(take)));
   const takenTakes = selectedDateTakes.filter((take: TreatmentTake) => take.status === 'taken' && subjectMatches(getTreatmentForTake(take)));
-
-  // Obtenir le traitement pour une prise
-  const getTreatmentForTake = (take: TreatmentTake): Treatment | undefined => {
-    return treatments.find(t => t.id === take.treatmentId);
-  };
+  const visibleTreatments = treatments.filter(t => subjectMatches(t));
   try { console.log('[Dashboard] treatments=', treatments.map(t => ({ id: t.id, name: t.name, subjectId: t.subjectId }))); } catch { }
 
   // Formater l'heure
@@ -389,7 +391,7 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="space-y-3">
-            {treatments.map(treatment => (
+            {visibleTreatments.map(treatment => (
               <div
                 key={treatment.id}
                 className="rounded-lg p-4 flex items-center space-x-3"
@@ -426,24 +428,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Barre de navigation inférieure */}
-      <div
-        className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-3 backdrop-blur-lg border-t"
-        style={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#333' }}
-      >
-        <button className="flex flex-col items-center space-y-1">
-          <Heart className="w-5 h-5" style={{ color: '#1DA1F2' }} />
-          <span className="text-xs" style={{ color: '#1DA1F2' }}>Résumé</span>
-        </button>
-        <button className="flex flex-col items-center space-y-1">
-          <Users className="w-5 h-5" style={{ color: '#B3B3B3' }} />
-          <span className="text-xs" style={{ color: '#B3B3B3' }}>Partage</span>
-        </button>
-        <button className="flex flex-col items-center space-y-1">
-          <Grid3X3 className="w-5 h-5" style={{ color: '#B3B3B3' }} />
-          <span className="text-xs" style={{ color: '#B3B3B3' }}>Parcourir</span>
-        </button>
-      </div>
+      <TabBar active="dashboard" />
     </div>
   );
 } 

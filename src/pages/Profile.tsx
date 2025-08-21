@@ -2,9 +2,11 @@ import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { useNavigate } from 'react-router-dom';
 
 export default function Profile() {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="space-y-6">
@@ -75,6 +77,14 @@ export default function Profile() {
                     'Non disponible'
                   }
                 </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  onClick={async () => { await logout(); navigate('/login'); }}
+                  className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-md transition-colors"
+                >
+                  Se déconnecter
+                </button>
               </div>
             </div>
           </Card>

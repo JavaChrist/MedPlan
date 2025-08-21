@@ -3,7 +3,8 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, onSnapshot, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { Treatment } from '../types';
-import { Edit, Trash2, ToggleLeft, ToggleRight, ArrowLeft } from 'lucide-react';
+import { Edit, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import TabBar from '../components/layout/TabBar';
 import { useNavigate } from 'react-router-dom';
 
 export default function ManageTreatments() {
@@ -18,7 +19,7 @@ export default function ManageTreatments() {
 				const d = new Date(value);
 				if (!isNaN(d.getTime())) return d;
 			}
-		} catch {}
+		} catch { }
 		return fallback;
 	};
 
@@ -47,7 +48,9 @@ export default function ManageTreatments() {
 						endDate: data.endDate ? coerceDate(data.endDate) : undefined,
 						isActive: data.isActive !== false,
 						createdAt: coerceDate(data.createdAt),
-						taken: data.taken || {}
+						taken: data.taken || {},
+						subjectId: data.subjectId,
+						subjectName: data.subjectName
 					} as Treatment);
 				});
 				setTreatments(list);
@@ -77,11 +80,8 @@ export default function ManageTreatments() {
 	};
 
 	return (
-		<div className="min-h-screen bg-black text-white px-4 py-6 max-w-md mx-auto">
+		<div className="min-h-screen bg-black text-white px-4 pb-20 pt-6 max-w-md mx-auto">
 			<div className="flex items-center space-x-3 mb-6">
-				<button onClick={() => navigate(-1)} className="p-2 rounded-lg bg-gray-800 border border-gray-700">
-					<ArrowLeft className="w-5 h-5" />
-				</button>
 				<h1 className="text-xl font-bold">Gérer vos traitements</h1>
 			</div>
 
@@ -108,6 +108,7 @@ export default function ManageTreatments() {
 					</div>
 				))}
 			</div>
+			<TabBar active="browse" />
 		</div>
 	);
 }

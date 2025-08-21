@@ -33,25 +33,19 @@ export default function App() {
 
           <Route path="/profile" element={
             <ProtectedRoute>
-              <Layout>
-                <Profile />
-              </Layout>
+              <Profile />
             </ProtectedRoute>
           } />
 
           <Route path="/manage-treatments" element={
             <ProtectedRoute>
-              <Layout>
-                <ManageTreatments />
-              </Layout>
+              <ManageTreatments />
             </ProtectedRoute>
           } />
 
           <Route path="/subjects" element={
             <ProtectedRoute>
-              <Layout>
-                <ManageSubjects />
-              </Layout>
+              <ManageSubjects />
             </ProtectedRoute>
           } />
 

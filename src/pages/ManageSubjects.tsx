@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { getAuth } from 'firebase/auth';
 import { SubjectProfile } from '../types';
 import { listSubjects, addSubject, updateSubject, deleteSubject } from '../services/subjectsService';
-import { Plus, Trash2, Edit2, UserPlus, Users, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Edit2, UserPlus, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import TabBar from '../components/layout/TabBar';
 
 export default function ManageSubjects() {
   const [subjects, setSubjects] = useState<SubjectProfile[]>([]);
@@ -38,11 +39,8 @@ export default function ManageSubjects() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6 max-w-md mx-auto">
+    <div className="min-h-screen bg-black text-white px-4 pb-20 pt-6 max-w-md mx-auto">
       <div className="flex items-center space-x-3 mb-6">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-lg bg-gray-800 border border-gray-700">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
         <h1 className="text-xl font-bold flex items-center space-x-2">
           <Users className="w-5 h-5" />
           <span>Profils</span>
@@ -88,6 +86,7 @@ export default function ManageSubjects() {
           </div>
         ))}
       </div>
+      <TabBar active="subjects" />
     </div>
   );
 }

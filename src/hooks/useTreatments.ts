@@ -14,7 +14,7 @@ function coerceDate(value: any, fallback: Date = new Date()): Date {
       const d = new Date(value);
       if (!isNaN(d.getTime())) return d;
     }
-  } catch {}
+  } catch { }
   return fallback;
 }
 
@@ -51,7 +51,9 @@ export function useTreatments() {
             endDate: data.endDate ? coerceDate(data.endDate) : undefined,
             isActive: data.isActive !== false,
             createdAt: coerceDate(data.createdAt),
-            taken: data.taken || {}
+            taken: data.taken || {},
+            subjectId: data.subjectId,
+            subjectName: data.subjectName
           } as Treatment);
         });
         setTreatments(list);
