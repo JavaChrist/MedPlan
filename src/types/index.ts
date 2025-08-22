@@ -12,6 +12,7 @@ export interface Treatment {
   isActive: boolean;
   createdAt: Date;
   taken?: { [date: string]: boolean }; // dates où le traitement a été pris (format YYYY-MM-DD)
+  skipped?: { [date: string]: boolean }; // dates marquées comme non prises
   subjectId?: string; // Identifiant du profil (enfant, conjoint, animal, etc.)
   subjectName?: string; // Dénomination conviviale (facultatif, duplicatif pour affichage rapide)
 }
@@ -42,7 +43,7 @@ export interface TreatmentTake {
 export interface DayPlan {
   date: Date;
   takes: TreatmentTake[];
-} 
+}
 
 export interface SubjectProfile {
   id: string;

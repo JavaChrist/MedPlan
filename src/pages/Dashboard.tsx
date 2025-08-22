@@ -16,6 +16,8 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [subjects, setSubjects] = useState<SubjectProfile[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ME'); // 'ME' | subjectId
+  // Cache local des dates "non pris" par traitement pour affichage instantané
+  const [localSkippedByTreatment, setLocalSkippedByTreatment] = useState<Record<string, Record<string, boolean>>>({});
 
   // Générer les prises pour la date sélectionnée (seulement quand nécessaire)
   useEffect(() => {
@@ -80,6 +82,9 @@ export default function Dashboard() {
     hasTaken: boolean;
     completionRatio: number;
     skippedRatio: number;
+    takenCount?: number;
+    skippedCount?: number;
+    totalCount?: number;
   }
 
   // Générer les jours avec une plage étendue (30 jours avant et après aujourd'hui)
@@ -100,18 +105,30 @@ export default function Dashboard() {
       const hasTaken = treatments
         .filter(t => subjectMatches(t))
         .some(t => Boolean(t.taken?.[dateStr]));
+      const hasSkipped = treatments
+        .filter(t => subjectMatches(t))
+        .some(t => Boolean((t as any).skipped?.[dateStr] || localSkippedByTreatment[t.id]?.[dateStr]));
 
       // Ratio pour le jour sélectionné (progression réelle), sinon binaire
       let completionRatio = 0;
       let skippedRatio = 0;
+      let takenCount: number | undefined;
+      let localSkippedCount: number | undefined;
+      let totalCount: number | undefined;
       if (date.toDateString() === selectedDate.toDateString()) {
         const skippedCount = selectedDateTakes.filter(t => t.status === 'skipped' && subjectMatches(getTreatmentForTake(t))).length;
         const total = pendingTakes.length + takenTakes.length + skippedCount;
         completionRatio = total > 0 ? takenTakes.length / total : (hasTaken ? 1 : 0);
         skippedRatio = total > 0 ? skippedCount / total : 0;
+        takenCount = takenTakes.length;
+        localSkippedCount = skippedCount;
+        totalCount = total;
       } else {
+        // Pour les jours non sélectionnés, on affiche un état binaire
+        // - plein bleu si au moins une prise est marquée prise
+        // - sinon, plein gris si au moins une prise est marquée non prise
         completionRatio = hasTaken ? 1 : 0;
-        skippedRatio = 0;
+        skippedRatio = !hasTaken && hasSkipped ? 1 : 0;
       }
 
       days.push({
@@ -122,7 +139,10 @@ export default function Dashboard() {
         dayOffset: i,
         hasTaken,
         completionRatio,
-        skippedRatio
+        skippedRatio,
+        takenCount,
+        skippedCount: localSkippedCount,
+        totalCount
       });
     }
 
@@ -206,23 +226,60 @@ export default function Dashboard() {
       if (!treatment) return;
       const dateStr = formatLocalDateKey(take.plannedTime);
       const newTaken = { ...(treatment.taken || {}), [dateStr]: true } as any;
+      const newSkipped = { ...(treatment.skipped || {}) } as any;
+      if (newSkipped[dateStr]) delete newSkipped[dateStr]; // si on marque pris, on enlève le "non pris"
 
       // Optimiste côté état
-      setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, taken: newTaken } : t));
+      setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, taken: newTaken, skipped: newSkipped } : t));
+      setLocalSkippedByTreatment(prev => {
+        const next = { ...(prev || {}) } as any;
+        if (next[treatment.id]?.[dateStr]) {
+          const copyDates = { ...next[treatment.id] };
+          delete copyDates[dateStr];
+          next[treatment.id] = copyDates;
+        }
+        return next;
+      });
 
       // Persistant côté Firestore
       const user = getAuth().currentUser;
       if (user) {
-        await updateTreatmentDoc(user.uid, treatment.id!, { taken: newTaken });
+        await updateTreatmentDoc(user.uid, treatment.id!, { taken: newTaken, skipped: newSkipped });
       }
     } catch (e) {
       console.error('Erreur mark taken:', e);
     }
   };
 
-  // Marquer une prise comme "non pris" (skipped)
-  const handleSkipTake = (take: TreatmentTake) => {
-    setTakes(prev => prev.map(t => t.id === take.id ? { ...t, status: 'skipped' as const } : t));
+  // Marquer une prise comme "non pris" (skipped) + persistance Firestore
+  const handleSkipTake = async (take: TreatmentTake) => {
+    try {
+      // 1) Mettre à jour l'état local de la prise (pour la liste en cours)
+      setTakes(prev => prev.map(t => t.id === take.id ? { ...t, status: 'skipped' as const, takenTime: new Date() } : t));
+
+      // 2) Trouver le traitement et mettre à jour le champ skipped pour la date (optimiste + Firestore)
+      const treatment = getTreatmentForTake(take);
+      if (!treatment) return;
+      const dateStr = formatLocalDateKey(take.plannedTime);
+      const newSkipped = { ...(treatment.skipped || {}), [dateStr]: true } as any;
+      const newTaken = { ...(treatment.taken || {}) } as any;
+      if (newTaken[dateStr]) delete newTaken[dateStr]; // si on marque non pris, on enlève le "pris"
+
+      // Optimiste côté état
+      setTreatments(prev => prev.map(t => t.id === treatment.id ? { ...t, skipped: newSkipped, taken: newTaken } : t));
+      setLocalSkippedByTreatment(prev => ({
+        ...prev,
+        [treatment.id]: { ...(prev[treatment.id] || {}), [dateStr]: true }
+      }));
+
+      // Persistant côté Firestore
+      const user = getAuth().currentUser;
+      if (user) {
+        await updateTreatmentDoc(user.uid, treatment.id!, { skipped: newSkipped, taken: newTaken });
+      }
+    } catch (e) {
+      console.error('Erreur mark skipped:', e);
+    }
   };
 
   // Gérer le scroll et centrer sur la date sélectionnée
@@ -299,7 +356,8 @@ export default function Dashboard() {
               style={{ scrollSnapAlign: 'center' }}
               onClick={() => handleDayClick(day.date)}
             >
-              <div className={`relative w-10 h-10 rounded-full flex items-center justify-center font-medium transition-all duration-200 ${day.isSelected ? 'transform scale-110' : ''}`}>
+              <div className={`relative w-10 h-10 rounded-full flex items-center justify-center font-medium transition-all duration-200 ${day.isSelected ? 'transform scale-110' : ''}`}
+                title={typeof day.totalCount === 'number' ? `${day.takenCount || 0}/${day.totalCount} pris${(day.skippedCount || 0) ? `, ${day.skippedCount} non pris` : ''}` : ''}>
                 {/* Fond (anneau) */}
                 <div className="absolute inset-0 rounded-full" style={{ border: '2px solid #1DA1F2', opacity: day.isSelected ? 1 : (day.dayOffset < 0 ? 0.5 : day.dayOffset > 0 ? 0.6 : 0.8) }} />
                 {/* Remplissage progressif (pris) */}

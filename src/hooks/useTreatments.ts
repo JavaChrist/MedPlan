@@ -52,6 +52,7 @@ export function useTreatments() {
             isActive: data.isActive !== false,
             createdAt: coerceDate(data.createdAt),
             taken: data.taken || {},
+            skipped: data.skipped || {},
             subjectId: data.subjectId,
             subjectName: data.subjectName
           } as Treatment);

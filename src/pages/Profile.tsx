@@ -1,31 +1,65 @@
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useNavigate } from 'react-router-dom';
 import TabBar from '../components/layout/TabBar';
+import { getUserProfile, upsertUserProfile } from '../services/userService';
+import { updateProfile } from 'firebase/auth';
 
 export default function Profile() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
+  const [displayName, setDisplayName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setDisplayName(currentUser.displayName || '');
+    (async () => {
+      try {
+        const profile = await getUserProfile(currentUser.uid);
+        if (profile?.phone) setPhone(profile.phone);
+      } catch { }
+    })();
+  }, [currentUser?.uid]);
 
   return (
     <div className="space-y-6 px-2 sm:px-3 pb-20 pt-6 mx-auto">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Profil utilisateur</h1>
-        <p className="text-gray-600">Gérez vos informations personnelles</p>
+        <h1 className="text-2xl font-bold text-white">Profil utilisateur</h1>
+        <p className="text-gray-300">Gérez vos informations personnelles</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <Card>
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Informations personnelles</h3>
-            <form className="space-y-6">
+            <form
+              className="space-y-6"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!currentUser) return;
+                try {
+                  setSaving(true);
+                  // Mettre à jour le displayName Firebase Auth si changé
+                  if (displayName !== (currentUser.displayName || '')) {
+                    await updateProfile(currentUser, { displayName });
+                  }
+                  // Sauvegarde Firestore (phone + displayName pour cohérence)
+                  await upsertUserProfile(currentUser.uid, { displayName, phone });
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
               <Input
                 label="Nom complet"
-                value={currentUser?.displayName || ''}
+                value={displayName}
                 placeholder="Votre nom complet"
-                readOnly
+                onChange={(e) => setDisplayName(e.target.value)}
               />
               <Input
                 label="Email"
@@ -37,15 +71,16 @@ export default function Profile() {
               <Input
                 label="Téléphone"
                 type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="+33 1 23 45 67 89"
               />
-              <Input
-                label="Entreprise"
-                placeholder="Nom de votre entreprise"
-              />
               <div className="flex space-x-4">
-                <Button>Sauvegarder</Button>
-                <Button variant="outline">Annuler</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Sauvegarde…' : 'Sauvegarder'}</Button>
+                <Button type="button" variant="outline" onClick={() => {
+                  setDisplayName(currentUser?.displayName || '');
+                  setPhone('');
+                }}>Annuler</Button>
               </div>
             </form>
           </Card>
