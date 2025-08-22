@@ -106,12 +106,12 @@ export default function ManageSubjects() {
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button onClick={() => {
                 const uid = getAuth().currentUser?.uid;
-                window.location.href = `/api/billing/mollie/checkout?plan=family&uid=${encodeURIComponent(uid || '')}`;
+                window.location.href = `/api/billing/mollie/checkout?plan=family&method=ideal&issuer=ideal_TESTNL99&uid=${encodeURIComponent(uid || '')}`;
               }}
                 className="w-full px-3 py-2 rounded-md bg-blue-500 hover:bg-blue-600 text-white text-sm">Famille • 2,99 €/mois</button>
               <button onClick={() => {
                 const uid = getAuth().currentUser?.uid;
-                window.location.href = `/api/billing/mollie/checkout?plan=premium&uid=${encodeURIComponent(uid || '')}`;
+                window.location.href = `/api/billing/mollie/checkout?plan=premium&method=ideal&issuer=ideal_TESTNL99&uid=${encodeURIComponent(uid || '')}`;
               }}
                 className="w-full px-3 py-2 rounded-md bg-blue-700 hover:bg-blue-800 text-white text-sm">Premium • 4,99 €/mois</button>
             </div>

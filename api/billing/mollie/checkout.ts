@@ -16,6 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const plan = String(req.query.plan || 'family'); // 'family' | 'premium'
+    const method = String(req.query.method || ''); // optional: 'ideal' etc.
+    const issuer = String(req.query.issuer || ''); // optional issuer for iDEAL tests
     const uid = String(req.query.uid || '');
     if (!uid) {
       res.status(400).json({ error: 'uid requis' });
@@ -34,13 +36,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const _factory: any = (mollieModule as any)?.default || (mollieModule as any)?.createMollieClient || (mollieModule as any);
     const mollie = _factory({ apiKey: mollieApiKey });
 
-    const payment: any = await mollie.payments.create({
+    const basePayload: any = {
       amount: { currency: 'EUR', value: selected.amount },
       description: selected.description,
       redirectUrl: `${appUrl}/subjects?paymentId=__PAYMENT_ID__`,
       webhookUrl: `${appUrl}/api/billing/mollie/webhook`,
       metadata: { uid, plan }
-    } as any);
+    };
+
+    if (method) {
+      basePayload.method = method;
+      if (method === 'ideal' && issuer) {
+        basePayload.issuer = issuer; // ex: ideal_TESTNL99
+      }
+    }
+
+    const payment: any = await mollie.payments.create(basePayload);
 
     const checkoutUrl = (payment as any)._links?.checkout?.href || (payment as any).getCheckoutUrl?.();
     const redirectUrl = String(selected && checkoutUrl).replace('__PAYMENT_ID__', payment.id);
