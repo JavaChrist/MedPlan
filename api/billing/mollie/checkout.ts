@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import createMollieClient, { Payment } from '@mollie/api-client';
+import mollieModule from '@mollie/api-client';
 
 const mollieApiKey = process.env.MOLLIE_API_KEY as string;
 
@@ -31,9 +31,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     const selected = planMap[plan] || planMap.family;
 
-    const mollie = createMollieClient({ apiKey: mollieApiKey });
+    const _factory: any = (mollieModule as any)?.default || (mollieModule as any)?.createMollieClient || (mollieModule as any);
+    const mollie = _factory({ apiKey: mollieApiKey });
 
-    const payment: Payment = await mollie.payments.create({
+    const payment: any = await mollie.payments.create({
       amount: { currency: 'EUR', value: selected.amount },
       description: selected.description,
       redirectUrl: `${appUrl}/subjects?paymentId=__PAYMENT_ID__`,
