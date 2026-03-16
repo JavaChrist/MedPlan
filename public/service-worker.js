@@ -1,5 +1,5 @@
 // Service Worker pour MedPlan - Notifications de rappel de traitement
-const CACHE_NAME = "medplan-v1";
+const CACHE_NAME = "medplan-v2";
 const DB_NAME = "MedPlanNotifications";
 const DB_VERSION = 1;
 const STORE_NAME = "notifications";
@@ -14,9 +14,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   console.log("Service Worker: Activation");
   event.waitUntil(clients.claim());
-
-  // Démarrer la vérification périodique des notifications
-  startNotificationChecker();
+  scheduleNextCheck();
 });
 
 // Gestion des messages depuis l'application
@@ -25,13 +23,13 @@ self.addEventListener("message", (event) => {
 
   switch (type) {
     case "schedule-notifications":
-      handleScheduleNotifications(data);
+      event.waitUntil(handleScheduleNotifications(data));
       break;
     case "cancel-notifications":
-      handleCancelNotifications(data.treatmentId);
+      event.waitUntil(handleCancelNotifications(data.treatmentId));
       break;
     case "mark-taken":
-      handleMarkTaken(data);
+      event.waitUntil(handleMarkTaken(data));
       break;
     default:
       console.log("Service Worker: Message non reconnu", type);
@@ -42,42 +40,53 @@ self.addEventListener("message", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const { action, data } = event.notification;
+  const notifData = event.notification.data || {};
 
-  if (action === "mark-taken") {
-    // Envoyer un message à tous les clients pour marquer comme pris
+  if (event.action === "mark-taken") {
     event.waitUntil(
-      clients.matchAll({ type: "window" }).then((clientList) => {
+      (async () => {
+        if (notifData.notificationId) {
+          await deleteNotification(notifData.notificationId);
+        }
+        const clientList = await clients.matchAll({ type: "window" });
         clientList.forEach((client) => {
-          client.postMessage({
-            type: "mark-treatment-taken",
-            data: data,
-          });
+          client.postMessage({ type: "mark-treatment-taken", data: notifData });
         });
-      })
+      })()
     );
   } else {
     // Ouvrir ou focuser l'application
     event.waitUntil(
       clients.matchAll({ type: "window" }).then((clientList) => {
-        if (clientList.length > 0) {
-          return clientList[0].focus();
-        }
+        const focused = clientList.find(c => c.focused);
+        if (focused) return focused.focus();
+        if (clientList.length > 0) return clientList[0].focus();
         return clients.openWindow("/");
       })
     );
   }
 });
 
+// Periodicité via setTimeout (compatible iOS PWA)
+// On utilise un alarm de 60s maximum pour rester dans les limites iOS
+let checkTimeout = null;
+
+function scheduleNextCheck() {
+  if (checkTimeout) clearTimeout(checkTimeout);
+  // Vérifier dans 60 secondes
+  checkTimeout = setTimeout(async () => {
+    await checkAndShowNotifications();
+    scheduleNextCheck();
+  }, 60000);
+}
+
 // === GESTION INDEXEDDB ===
 
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -92,10 +101,13 @@ function openDB() {
 async function saveNotification(notification) {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    await store.put(notification);
-    console.log("Notification sauvegardée:", notification);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put(notification);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   } catch (error) {
     console.error("Erreur sauvegarde notification:", error);
   }
@@ -104,16 +116,14 @@ async function saveNotification(notification) {
 async function getScheduledNotifications() {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-
     return new Promise((resolve, reject) => {
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const tx = db.transaction([STORE_NAME], "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
     });
-  } catch (error) {
-    console.error("Erreur récupération notifications:", error);
+  } catch {
     return [];
   }
 }
@@ -121,10 +131,13 @@ async function getScheduledNotifications() {
 async function deleteNotification(notificationId) {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    await store.delete(notificationId);
-    console.log("Notification supprimée:", notificationId);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.delete(notificationId);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   } catch (error) {
     console.error("Erreur suppression notification:", error);
   }
@@ -133,18 +146,13 @@ async function deleteNotification(notificationId) {
 async function deleteNotificationsByTreatment(treatmentId) {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const index = store.index("treatmentId");
-
-    const request = index.openCursor(IDBKeyRange.only(treatmentId));
-    request.onsuccess = (event) => {
-      const cursor = event.target.result;
-      if (cursor) {
-        store.delete(cursor.primaryKey);
-        cursor.continue();
-      }
-    };
+    const notifications = await getScheduledNotifications();
+    const toDelete = notifications.filter(n => n.treatmentId === treatmentId);
+    const tx = db.transaction([STORE_NAME], "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    for (const n of toDelete) {
+      store.delete(n.id);
+    }
   } catch (error) {
     console.error("Erreur suppression notifications traitement:", error);
   }
@@ -153,98 +161,70 @@ async function deleteNotificationsByTreatment(treatmentId) {
 // === GESTION DES NOTIFICATIONS ===
 
 async function handleScheduleNotifications(treatment) {
-  console.log("Planification notifications pour:", treatment.name);
-
-  // Supprimer les anciennes notifications de ce traitement
   await deleteNotificationsByTreatment(treatment.id);
 
-  // Obtenir la date d'aujourd'hui
   const today = new Date();
-  const todayStr = today.toISOString().split("T")[0];
 
-  // Planifier les nouvelles notifications
-  if (treatment.schedules && treatment.schedules.length > 0) {
-    for (const schedule of treatment.schedules) {
-      const [hours, minutes] = schedule.time.split(":").map(Number);
+  if (!treatment.schedules?.length) return;
 
-      // Créer le timestamp pour aujourd'hui à cette heure
-      const notificationTime = new Date(today);
-      notificationTime.setHours(hours, minutes, 0, 0);
+  for (const schedule of treatment.schedules) {
+    if (!schedule.time) continue;
+    const [hours, minutes] = schedule.time.split(":").map(Number);
 
-      // Si l'heure est déjà passée aujourd'hui, programmer pour demain
-      if (notificationTime <= new Date()) {
-        notificationTime.setDate(notificationTime.getDate() + 1);
-      }
+    const notificationTime = new Date(today);
+    notificationTime.setHours(hours, minutes, 0, 0);
 
-      const notification = {
-        id: `${treatment.id}-${schedule.time}-${todayStr}`,
-        treatmentId: treatment.id,
-        treatmentName: treatment.name,
-        dosage: treatment.dosage,
-        unit: treatment.unit,
-        time: schedule.time,
-        timestamp: notificationTime.getTime(),
-        scheduled: true,
-      };
-
-      await saveNotification(notification);
+    // Si l'heure est déjà passée aujourd'hui, programmer pour demain
+    if (notificationTime <= new Date()) {
+      notificationTime.setDate(notificationTime.getDate() + 1);
     }
+
+    const dateStr = notificationTime.toISOString().split("T")[0];
+
+    const notification = {
+      id: `${treatment.id}-${schedule.time}-${dateStr}`,
+      treatmentId: treatment.id,
+      treatmentName: treatment.name,
+      dosage: treatment.dosage,
+      unit: treatment.unit,
+      time: schedule.time,
+      timestamp: notificationTime.getTime(),
+      scheduled: true,
+    };
+
+    await saveNotification(notification);
   }
 }
 
 async function handleCancelNotifications(treatmentId) {
-  console.log("Annulation notifications pour:", treatmentId);
   await deleteNotificationsByTreatment(treatmentId);
 }
 
 async function handleMarkTaken(data) {
-  // Supprimer la notification car elle a été traitée
   if (data.notificationId) {
     await deleteNotification(data.notificationId);
   }
 }
 
-// === VÉRIFICATION PÉRIODIQUE ===
-
-let notificationChecker = null;
-
-function startNotificationChecker() {
-  // Arrêter l'ancien checker s'il existe
-  if (notificationChecker) {
-    clearInterval(notificationChecker);
-  }
-
-  // Vérifier toutes les minutes
-  notificationChecker = setInterval(checkAndShowNotifications, 60000);
-
-  // Vérification immédiate
-  checkAndShowNotifications();
-
-  console.log("Vérificateur de notifications démarré");
-}
+// === VÉRIFICATION ET AFFICHAGE DES NOTIFICATIONS ===
 
 async function checkAndShowNotifications() {
   try {
-    const now = new Date();
-    const currentTime = now.getTime();
-
-    // Récupérer toutes les notifications programmées
+    const now = Date.now();
     const notifications = await getScheduledNotifications();
 
     for (const notification of notifications) {
-      // Vérifier si il est temps d'afficher cette notification (±30 secondes)
-      const timeDiff = Math.abs(currentTime - notification.timestamp);
+      const timeDiff = notification.timestamp - now;
 
-      if (timeDiff <= 30000 && notification.scheduled) {
+      // Afficher si dans la fenêtre [-30s, +30s]
+      if (Math.abs(timeDiff) <= 30000 && notification.scheduled) {
         await showNotification(notification);
-
-        // Marquer comme affichée pour éviter les doublons
         notification.scheduled = false;
         await saveNotification(notification);
       }
 
-      // Supprimer les notifications expirées (plus de 1 heure)
-      if (currentTime - notification.timestamp > 3600000) {
+      // Supprimer les notifications expirées (plus de 2 heures)
+      if (now - notification.timestamp > 7200000) {
         await deleteNotification(notification.id);
       }
     }
@@ -255,23 +235,15 @@ async function checkAndShowNotifications() {
 
 async function showNotification(notification) {
   try {
+    // Sur iOS PWA, les actions ne sont pas supportées — on garde une notification simple
+    const isIOS = /iphone|ipad|ipod/i.test(self.navigator?.userAgent || '');
+
     const options = {
-      body: `${notification.treatmentName} - ${notification.dosage} ${notification.unit}\nIl est temps de prendre votre traitement !`,
-      icon: "/logo192.png",
-      badge: "/logo192.png",
+      body: `${notification.treatmentName} — ${notification.dosage} ${notification.unit}`,
+      icon: "/apple-touch-icon.png",
+      badge: "/apple-touch-icon.png",
       tag: notification.id,
       renotify: true,
-      requireInteraction: true,
-      actions: [
-        {
-          action: "mark-taken",
-          title: "Pris ✅",
-        },
-        {
-          action: "remind-later",
-          title: "Plus tard ⏰",
-        },
-      ],
       data: {
         notificationId: notification.id,
         treatmentId: notification.treatmentId,
@@ -280,12 +252,16 @@ async function showNotification(notification) {
       },
     };
 
-    await self.registration.showNotification(
-      `💊 Prendre votre traitement`,
-      options
-    );
+    // Les actions ne sont pas supportées sur iOS Safari
+    if (!isIOS) {
+      options.requireInteraction = true;
+      options.actions = [
+        { action: "mark-taken", title: "Pris ✅" },
+        { action: "remind-later", title: "Plus tard ⏰" },
+      ];
+    }
 
-    console.log("Notification affichée:", notification.treatmentName);
+    await self.registration.showNotification("💊 MedPlan — Rappel traitement", options);
   } catch (error) {
     console.error("Erreur affichage notification:", error);
   }
@@ -294,18 +270,15 @@ async function showNotification(notification) {
 // === GESTION DU CACHE (PWA) ===
 
 self.addEventListener("fetch", (event) => {
-  // Stratégie cache-first pour les ressources statiques
   if (
     event.request.destination === "image" ||
     event.request.url.includes("/static/") ||
     event.request.url.includes("/icons/")
   ) {
     event.respondWith(
-      caches.match(event.request).then((response) => {
-        return response || fetch(event.request);
-      })
+      caches.match(event.request).then((response) => response || fetch(event.request))
     );
   }
 });
 
-console.log("Service Worker MedPlan chargé ✅");
+console.log("Service Worker MedPlan v2 chargé ✅");

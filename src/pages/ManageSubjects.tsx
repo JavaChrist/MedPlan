@@ -15,6 +15,7 @@ export default function ManageSubjects() {
   const [color, setColor] = useState('#60a5fa');
   const navigate = useNavigate();
   const [plan, setPlan] = useState<{ id: 'free' | 'family' | 'premium', maxSubjects: number, label: string } | null>(null);
+  const [lastPayment, setLastPayment] = useState<{ id: string, paid: boolean, plan?: 'family' | 'premium' } | null>(null);
 
   const load = async () => {
     const user = getAuth().currentUser;
@@ -48,6 +49,7 @@ export default function ManageSubjects() {
       try {
         const res = await fetch(`/api/billing/mollie/status?id=${encodeURIComponent(paymentId)}`);
         const data = await res.json();
+        setLastPayment({ id: data?.id, paid: Boolean(data?.paid), plan: data?.plan });
         if (data?.paid && data?.uid && data?.plan) {
           const pid: 'family' | 'premium' = data.plan;
           const planDoc = pid === 'premium'
@@ -59,6 +61,17 @@ export default function ManageSubjects() {
       } catch { }
     })();
   }, []);
+
+  const forceApplyPlan = async () => {
+    const user = getAuth().currentUser;
+    if (!user || !lastPayment?.plan) return;
+    const pid: 'family' | 'premium' = lastPayment.plan;
+    const planDoc = pid === 'premium'
+      ? { id: 'premium', maxSubjects: Number.POSITIVE_INFINITY, name: 'MedPlan Premium' }
+      : { id: 'family', maxSubjects: 5, name: 'MedPlan Family' };
+    await setDoc(doc(db, 'users', user.uid), { plan: planDoc, lastPaymentId: lastPayment.id, updatedAt: new Date(), testForced: true }, { merge: true });
+    await load();
+  };
 
   const create = async () => {
     const user = getAuth().currentUser;
@@ -80,7 +93,7 @@ export default function ManageSubjects() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-2 sm:px-3 pb-20 pt-6 mx-auto">
+    <div className="min-h-screen bg-black text-white px-4 pb-28 pt-6 mx-auto">
       <div className="flex items-center space-x-3 mb-6">
         <h1 className="text-xl font-bold flex items-center space-x-2">
           <Users className="w-5 h-5" />
@@ -100,6 +113,12 @@ export default function ManageSubjects() {
             <p className="text-white font-medium">{subjects.length}{plan && isFinite(plan.maxSubjects) ? ` / ${plan.maxSubjects}` : ' / ∞'}</p>
           </div>
         </div>
+        {lastPayment && !lastPayment.paid && (
+          <div className="mt-3 p-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 text-sm">
+            Paiement non confirmé. Si le paiement test a réussi, clique ici pour forcer l’activation du plan.
+            <button onClick={forceApplyPlan} className="ml-2 px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-700 text-white">Forcer</button>
+          </div>
+        )}
         {plan && isFinite(plan.maxSubjects) && subjects.length >= plan.maxSubjects && (
           <div className="mt-3 p-3 rounded-md border border-blue-500/30 bg-blue-500/10">
             <p className="text-sm text-blue-200">Limite atteinte. Passez à une offre supérieure:</p>
@@ -151,7 +170,7 @@ export default function ManageSubjects() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <button onClick={() => remove(s.id)} className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm">
+              <button onClick={() => remove(s.id)} className="p-2.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

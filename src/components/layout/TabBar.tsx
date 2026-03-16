@@ -13,22 +13,26 @@ export default function TabBar({ active }: { active: ActiveTab }) {
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-3 backdrop-blur-lg border-t"
-      style={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#333' }}
+      className="fixed bottom-0 left-0 right-0 flex justify-around items-center pt-3 border-t backdrop-blur-lg"
+      style={{
+        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+        borderColor: '#333',
+        paddingBottom: 'calc(12px + env(safe-area-inset-bottom))'
+      }}
     >
-      <button onClick={() => navigate('/dashboard')} className="flex flex-col items-center space-y-1">
+      <button onClick={() => navigate('/dashboard')} className="flex flex-col items-center space-y-1 min-h-[44px] min-w-[60px] justify-center">
         <Heart className="w-5 h-5" style={{ color: isActive('dashboard') ? activeColor : inactiveColor }} />
         <span className="text-xs" style={{ color: isActive('dashboard') ? activeColor : inactiveColor }}>Accueil</span>
       </button>
-      <button onClick={() => navigate('/subjects')} className="flex flex-col items-center space-y-1">
+      <button onClick={() => navigate('/subjects')} className="flex flex-col items-center space-y-1 min-h-[44px] min-w-[60px] justify-center">
         <Users className="w-5 h-5" style={{ color: isActive('subjects') ? activeColor : inactiveColor }} />
         <span className="text-xs" style={{ color: isActive('subjects') ? activeColor : inactiveColor }}>Profil</span>
       </button>
-      <button onClick={() => navigate('/manage-treatments')} className="flex flex-col items-center space-y-1">
+      <button onClick={() => navigate('/manage-treatments')} className="flex flex-col items-center space-y-1 min-h-[44px] min-w-[60px] justify-center">
         <Grid3X3 className="w-5 h-5" style={{ color: isActive('browse') ? activeColor : inactiveColor }} />
         <span className="text-xs" style={{ color: isActive('browse') ? activeColor : inactiveColor }}>Traitements</span>
       </button>
-      <button onClick={() => navigate('/profile')} className="flex flex-col items-center space-y-1">
+      <button onClick={() => navigate('/profile')} className="flex flex-col items-center space-y-1 min-h-[44px] min-w-[60px] justify-center">
         <User className="w-5 h-5" style={{ color: isActive('account') ? activeColor : inactiveColor }} />
         <span className="text-xs" style={{ color: isActive('account') ? activeColor : inactiveColor }}>Compte</span>
       </button>

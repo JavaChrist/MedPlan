@@ -18,6 +18,58 @@ function coerceDate(value: any, fallback: Date = new Date()): Date {
   return fallback;
 }
 
+// Vérifie si un traitement doit être pris à une date donnée selon sa fréquence
+function isTreatmentActiveOnDate(treatment: Treatment, targetDate: Date): boolean {
+  // Vérifier isActive
+  if (!treatment.isActive) return false;
+
+  // Normaliser les dates (sans heure) pour comparaison
+  const target = new Date(targetDate);
+  target.setHours(0, 0, 0, 0);
+
+  const start = new Date(treatment.startDate);
+  start.setHours(0, 0, 0, 0);
+
+  // Pas encore commencé
+  if (target < start) return false;
+
+  // Traitement terminé
+  if (treatment.endDate) {
+    const end = new Date(treatment.endDate);
+    end.setHours(0, 0, 0, 0);
+    if (target > end) return false;
+  }
+
+  // Vérifier la fréquence du premier schedule (tous les schedules ont la même fréquence)
+  const schedule = treatment.schedules[0];
+  if (!schedule) return false;
+
+  const freq = schedule.frequency;
+
+  if (freq === 'daily' || freq === 'as_needed') return true;
+
+  if (freq === 'specific_days') {
+    const days = schedule.days || [];
+    return days.includes(target.getDay());
+  }
+
+  if (freq === 'every_x_days') {
+    const interval = schedule.intervalDays || 1;
+    const diffDays = Math.round((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays % interval === 0;
+  }
+
+  if (freq === 'cycle') {
+    const onDays = schedule.cycleConfig?.onDays || 21;
+    const offDays = schedule.cycleConfig?.offDays || 7;
+    const cycleLength = onDays + offDays;
+    const diffDays = Math.round((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return (diffDays % cycleLength) < onDays;
+  }
+
+  return true;
+}
+
 export function useTreatments() {
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [takes, setTakes] = useState<TreatmentTake[]>([]);
@@ -30,6 +82,8 @@ export function useTreatments() {
     const auth = getAuth();
 
     const attach = (uid: string) => {
+      // Eviter un double listener si déjà attaché
+      if (unsubscribe) unsubscribe();
       const q = query(
         collection(db, `users/${uid}/treatments`),
         orderBy('createdAt', 'desc')
@@ -43,6 +97,7 @@ export function useTreatments() {
             name: data.name,
             type: data.type,
             dosage: data.dosage,
+            quantity: data.quantity ?? 1,
             unit: data.unit,
             color: data.color || '#1DA1F2',
             icon: data.icon,
@@ -58,7 +113,6 @@ export function useTreatments() {
           } as Treatment);
         });
         setTreatments(list);
-        try { console.log('[useTreatments] uid=', uid, 'count=', list.length); } catch { }
         setLoading(false);
       });
     };
@@ -85,12 +139,18 @@ export function useTreatments() {
     };
   }, [currentUser?.uid]);
 
-  // Générer les prises pour une date donnée
+  // Générer les prises pour une date donnée (respecte isActive, endDate, startDate, fréquence)
   const generateTakesForDate = (targetDate: Date) => {
     const dateTakes: TreatmentTake[] = [];
 
     treatments.forEach(treatment => {
+      // Ignorer les traitements inactifs, pas encore commencés ou terminés
+      if (!isTreatmentActiveOnDate(treatment, targetDate)) return;
+
       treatment.schedules.forEach(schedule => {
+        // Ignorer les schedules "au besoin" (pas de rappel automatique)
+        if (schedule.frequency === 'as_needed') return;
+
         const [hours, minutes] = schedule.time.split(':').map(Number);
         const plannedTime = new Date(targetDate);
         plannedTime.setHours(hours, minutes, 0, 0);
@@ -141,10 +201,13 @@ export function useTreatments() {
       take.plannedTime.toDateString() === targetDate.toDateString()
     );
 
-    // Si pas de prises générées pour cette date, les générer
-    if (dateTakes.length === 0 && treatments.length > 0) {
+    // Générer si aucune prise n'existe encore pour cette date et qu'il y a des traitements actifs
+    const hasActiveTreatments = treatments.some(t => isTreatmentActiveOnDate(t, targetDate));
+    if (dateTakes.length === 0 && hasActiveTreatments) {
       const newTakes = generateTakesForDate(targetDate);
-      setTakes(prev => [...prev, ...newTakes]);
+      if (newTakes.length > 0) {
+        setTakes(prev => [...prev, ...newTakes]);
+      }
     }
   };
 

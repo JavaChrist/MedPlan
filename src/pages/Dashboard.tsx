@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTreatments } from '../hooks/useTreatments';
 import { SubjectProfile, Treatment, TreatmentTake } from '../types';
 import { listSubjects } from '../services/subjectsService';
-import { Plus, Check, Clock, Pill, Circle, Edit } from 'lucide-react';
+import { Plus, Check, Clock, Pill, Circle, Edit, Bell, BellOff, X } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 import { updateTreatment as updateTreatmentDoc } from '../services/treatmentService';
 import TabBar from '../components/layout/TabBar';
+import { requestNotificationPermission, getPermissionStatus, testNotification, isIOS, isPWAInstalled } from '../services/notificationService';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -18,6 +19,9 @@ export default function Dashboard() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ME'); // 'ME' | subjectId
   // Cache local des dates "non pris" par traitement pour affichage instantané
   const [localSkippedByTreatment, setLocalSkippedByTreatment] = useState<Record<string, Record<string, boolean>>>({});
+  // État notifications
+  const [notifStatus, setNotifStatus] = useState<'idle' | 'needs-install' | 'denied' | 'granted' | 'unsupported'>('idle');
+  const [showNotifModal, setShowNotifModal] = useState(false);
 
   // Générer les prises pour la date sélectionnée (seulement quand nécessaire)
   useEffect(() => {
@@ -25,18 +29,59 @@ export default function Dashboard() {
   }, [selectedDate, treatments, ensureTakesForDate]);
 
   // Charger les profils (sujets)
+  const loadSubjects = async () => {
+    try {
+      const uid = (window as any).firebaseAuth?.currentUser?.uid || getAuth().currentUser?.uid || '';
+      const list = await listSubjects(uid);
+      if (Array.isArray(list)) setSubjects(list);
+    } catch (_) {
+      // ignore en mode démo
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const list = await listSubjects((window as any).firebaseAuth?.currentUser?.uid || (await import('firebase/auth')).getAuth().currentUser?.uid || '');
-        if (Array.isArray(list)) setSubjects(list);
-      } catch (_) {
-        // ignore en mode démo
-      }
-    })();
+    loadSubjects();
+    // Recharger les profils à chaque fois que l'utilisateur revient sur cette page
+    const handleVisibility = () => { if (document.visibilityState === 'visible') loadSubjects(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', loadSubjects);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', loadSubjects);
+    };
   }, []);
 
-  // Obtenir les prises pour la date sélectionnée
+  // Initialiser le statut des notifications au chargement
+  useEffect(() => {
+    setNotifStatus(getPermissionStatus() as any);
+  }, []);
+
+  // Gérer le clic sur le bouton Notifications
+  const handleNotifClick = async () => {
+    // iOS sans installation PWA → afficher instructions
+    if (isIOS() && !isPWAInstalled()) {
+      setNotifStatus('needs-install');
+      setShowNotifModal(true);
+      return;
+    }
+    if (!('Notification' in window)) {
+      setNotifStatus('unsupported');
+      setShowNotifModal(true);
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setNotifStatus('denied');
+      setShowNotifModal(true);
+      return;
+    }
+    const result = await requestNotificationPermission();
+    setNotifStatus(result as any);
+    if (result === 'granted') {
+      await testNotification();
+    } else {
+      setShowNotifModal(true);
+    }
+  };
   const selectedDateTakes = getTakesForDate(selectedDate);
 
   // Obtenir le traitement pour une prise (doit être défini avant usage)
@@ -198,6 +243,49 @@ export default function Dashboard() {
     return Object.values(grouped).sort((a, b) => a.time.localeCompare(b.time));
   };
 
+  // Afficher une quantité fractionnée lisiblement
+  const formatQuantity = (q: number | undefined, type: string): string => {
+    if (!q || q === 1) return '';
+    if (q === 0.25) return '¼ ';
+    if (q === 0.5)  return '½ ';
+    if (q === 0.75) return '¾ ';
+    if (q === 1.5)  return '1½ ';
+    return `${q} `;
+  };
+
+  // Afficher la fréquence réelle d'un traitement
+  const formatFrequencyLabel = (treatment: Treatment): string => {
+    const s = treatment.schedules?.[0];
+    if (!s) return '';
+    if (s.frequency === 'daily') return 'Tous les jours';
+    if (s.frequency === 'as_needed') return 'Au besoin';
+    if (s.frequency === 'specific_days' && s.days?.length) {
+      const names = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+      return s.days.map(d => names[d]).join(', ');
+    }
+    if (s.frequency === 'every_x_days' && s.intervalDays) {
+      return `Tous les ${s.intervalDays} jours`;
+    }
+    if (s.frequency === 'cycle' && s.cycleConfig) {
+      return `${s.cycleConfig.onDays}j actif / ${s.cycleConfig.offDays}j pause`;
+    }
+    return '';
+  };
+
+  // Afficher la dose complète : "½ comprimé · 250 mg" ou "500 mg"
+  const formatDoseLabel = (treatment: Treatment): string => {
+    const isFractionnable = ['comprime', 'gelule', 'comprime_sublingual', 'comprime_croquer', 'suppositoire'].includes(treatment.type);
+    const qty = treatment.quantity ?? 1;
+    if (isFractionnable && qty !== 1) {
+      const label = treatment.type === 'gelule' ? 'gélule' : treatment.type === 'suppositoire' ? 'suppositoire' : 'comprimé';
+      const fracStr = formatQuantity(qty, treatment.type);
+      const totalMg = qty * treatment.dosage;
+      const totalStr = Number.isInteger(totalMg) ? `${totalMg}` : totalMg.toFixed(2).replace(/\.?0+$/, '');
+      return `${fracStr}${label} · ${totalStr} ${treatment.unit}`;
+    }
+    return `${treatment.dosage} ${treatment.unit}`;
+  };
+
   // Composant pour l'icône du médicament
   const MedicationIcon = ({ treatment, size = 'w-10 h-10' }: { treatment: Treatment, size?: string }) => (
     <div
@@ -311,34 +399,150 @@ export default function Dashboard() {
 
   return (
     <div style={{ backgroundColor: '#000' }} className="min-h-screen w-full">
-      {/* En-tête avec date - position fixe */}
-      <div className="sticky top-0 z-10 px-6 pt-8 pb-4" style={{ backgroundColor: '#000' }}>
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white capitalize">{formatSelectedDate()}</h1>
-          <button
-            onClick={async () => {
-              const { requestNotificationPermission } = await import('../services/notificationService');
-              await requestNotificationPermission();
-            }}
-            className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded-lg"
-          >Notifications</button>
-        </div>
-      </div>
+      {/* Modal instructions notifications */}
+      {showNotifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm relative">
+            <button onClick={() => setShowNotifModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
 
-      {/* Sélecteur de profil */}
-      <div className="px-2 sm:px-3 pt-4">
-        <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+            {notifStatus === 'needs-install' && (
+              <>
+                <div className="flex items-center space-x-3 mb-4">
+                  <Bell className="w-6 h-6 text-blue-400 flex-shrink-0" />
+                  <h2 className="text-white font-bold text-lg">Activer les notifications</h2>
+                </div>
+                <p className="text-gray-300 text-sm mb-4">
+                  Sur iPhone, les notifications nécessitent d'installer MedPlan sur l'écran d'accueil.
+                </p>
+                <ol className="text-gray-300 text-sm space-y-2 mb-5">
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">1.</span>
+                    <span>Appuie sur le bouton <strong className="text-white">Partager</strong> (⬆) en bas de Safari</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">2.</span>
+                    <span>Sélectionne <strong className="text-white">"Sur l'écran d'accueil"</strong></span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">3.</span>
+                    <span>Ouvre MedPlan depuis l'icône ajoutée et réessaie</span>
+                  </li>
+                </ol>
+                <p className="text-xs text-gray-500">Requiert iOS 16.4 ou supérieur.</p>
+              </>
+            )}
+
+            {notifStatus === 'denied' && (
+              <>
+                <div className="flex items-center space-x-3 mb-4">
+                  <BellOff className="w-6 h-6 text-red-400 flex-shrink-0" />
+                  <h2 className="text-white font-bold text-lg">Notifications bloquées</h2>
+                </div>
+                <p className="text-gray-300 text-sm mb-4">
+                  Tu as précédemment refusé les notifications. Pour les réactiver :
+                </p>
+                <ol className="text-gray-300 text-sm space-y-2 mb-5">
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">1.</span>
+                    <span>Ouvre les <strong className="text-white">Réglages</strong> de ton iPhone</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">2.</span>
+                    <span>Va dans <strong className="text-white">MedPlan → Notifications</strong></span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-blue-400 font-bold flex-shrink-0">3.</span>
+                    <span>Active <strong className="text-white">"Autoriser les notifications"</strong></span>
+                  </li>
+                </ol>
+              </>
+            )}
+
+            {notifStatus === 'unsupported' && (
+              <>
+                <div className="flex items-center space-x-3 mb-4">
+                  <BellOff className="w-6 h-6 text-yellow-400 flex-shrink-0" />
+                  <h2 className="text-white font-bold text-lg">Non supporté</h2>
+                </div>
+                <p className="text-gray-300 text-sm">
+                  Les notifications ne sont pas disponibles sur ce navigateur. Utilise Safari sur iPhone (iOS 16.4+) avec l'app installée sur l'écran d'accueil.
+                </p>
+              </>
+            )}
+
+            <button onClick={() => setShowNotifModal(false)} className="mt-4 w-full py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium text-sm">
+              Compris
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* En-tête avec date + sélecteur de profil - position fixe */}
+      <div className="sticky top-0 z-10 px-4 pb-3" style={{ backgroundColor: '#000', paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}>
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h1 className="text-lg sm:text-xl font-bold text-white capitalize truncate">{formatSelectedDate()}</h1>
           <button
-            onClick={() => setSelectedSubjectId('ME')}
-            className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === 'ME' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
-          >Moi</button>
-          {subjects.map(s => (
-            <button
-              key={s.id}
-              onClick={() => setSelectedSubjectId(s.id)}
-              className={`px-3 py-1.5 rounded-full text-sm ${selectedSubjectId === s.id ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-300'}`}
-            >{s.name}</button>
-          ))}
+            onClick={handleNotifClick}
+            className={`flex-shrink-0 flex items-center space-x-1.5 text-xs border px-3 py-2.5 rounded-lg transition-colors min-h-[44px] ${
+              notifStatus === 'granted'
+                ? 'text-green-400 border-green-400/30 bg-green-400/10'
+                : 'text-blue-400 border-blue-400/30'
+            }`}
+          >
+            {notifStatus === 'granted'
+              ? <><Check className="w-3.5 h-3.5" /><span>Notifs actives</span></>
+              : notifStatus === 'denied'
+              ? <><BellOff className="w-3.5 h-3.5" /><span>Bloquées</span></>
+              : <><Bell className="w-3.5 h-3.5" /><span>Notifications</span></>
+            }
+          </button>
+        </div>
+
+        {/* Sélecteur de profil */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-hide" style={{ paddingTop: '3px', paddingBottom: '6px' }}>
+          {/* Bouton "Moi" */}
+          {(() => {
+            const isSelected = selectedSubjectId === 'ME';
+            return (
+              <button
+                onClick={() => setSelectedSubjectId('ME')}
+                className="px-3 py-1.5 rounded-full text-sm font-medium transition-all flex items-center space-x-1.5 flex-shrink-0"
+                style={isSelected
+                  ? { backgroundColor: '#3b82f6', color: '#fff', border: '2px solid #3b82f6' }
+                  : { backgroundColor: '#1f2937', color: '#9ca3af', border: '2px solid #3b82f6' }
+                }
+              >
+                <span className="w-2 h-2 rounded-full inline-block flex-shrink-0"
+                  style={{ backgroundColor: isSelected ? '#fff' : '#3b82f6' }} />
+                <span>Moi</span>
+              </button>
+            );
+          })()}
+
+          {/* Boutons profils secondaires */}
+          {subjects.map(s => {
+            const isSelected = selectedSubjectId === s.id;
+            const color = s.color || '#60a5fa';
+            return (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSubjectId(s.id)}
+                className="px-3 py-1.5 rounded-full text-sm font-medium transition-all flex items-center space-x-1.5 flex-shrink-0"
+                style={isSelected
+                  ? { backgroundColor: color, color: '#fff', border: `2px solid ${color}` }
+                  : { backgroundColor: '#1f2937', color: '#e5e7eb', border: `2px solid ${color}` }
+                }
+              >
+                <span
+                  className="w-2 h-2 rounded-full inline-block flex-shrink-0"
+                  style={{ backgroundColor: isSelected ? '#fff' : color }}
+                />
+                <span>{s.name}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -423,24 +627,24 @@ export default function Dashboard() {
                             <p className="text-sm" style={{ color: '#B3B3B3' }}>
                               {treatment.type === 'comprime' ? 'Comprimé' :
                                 treatment.type === 'gelule' ? 'Gélule' :
-                                  (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {treatment.dosage} {treatment.unit}
+                                  (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {formatDoseLabel(treatment)}
                             </p>
                           </div>
                         </div>
 
                         {/* Boutons de validation */}
-                        <div className="space-y-1.5">
+                        <div className="flex space-x-2">
                           <button
                             onClick={() => handleMarkTaken(take)}
-                            className="w-full py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors"
+                            className="flex-1 py-3 px-3 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors min-h-[44px]"
                           >
-                            Pris
+                            ✓ Pris
                           </button>
                           <button
                             onClick={() => handleSkipTake(take)}
-                            className="w-full py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors"
+                            className="flex-1 py-3 px-3 bg-transparent border border-gray-600 hover:bg-gray-700 text-gray-300 text-sm font-medium rounded-lg transition-colors min-h-[44px]"
                           >
-                            Non pris
+                            ✕ Non pris
                           </button>
                         </div>
                       </div>
@@ -481,7 +685,7 @@ export default function Dashboard() {
                       <p className="text-sm" style={{ color: '#B3B3B3' }}>
                         {treatment.type === 'comprime' ? 'Comprimé' :
                           treatment.type === 'gelule' ? 'Gélule' :
-                            (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {treatment.dosage} {treatment.unit}
+                            (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {formatDoseLabel(treatment)}
                       </p>
                       {take.takenTime && (
                         <div className="flex items-center space-x-1 mt-1" style={{ color: '#B3B3B3' }}>
@@ -525,11 +729,11 @@ export default function Dashboard() {
                   <p className="text-sm" style={{ color: '#B3B3B3' }}>
                     {treatment.type === 'comprime' ? 'Comprimé' :
                       treatment.type === 'gelule' ? 'Gélule' :
-                        (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {treatment.dosage} {treatment.unit}
+                        (treatment.type === 'sirop' || treatment.type === 'suspension_buvable' || treatment.type === 'solution_buvable') ? 'Liquide' : 'Autre'} • {formatDoseLabel(treatment)}
                   </p>
                   <div className="flex items-center space-x-1 mt-1" style={{ color: '#B3B3B3' }}>
                     <Clock className="w-3 h-3" />
-                    <span className="text-xs">Tous les jours</span>
+                    <span className="text-xs">{formatFrequencyLabel(treatment) || 'Tous les jours'}</span>
                   </div>
                 </div>
               </div>

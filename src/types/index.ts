@@ -3,6 +3,7 @@ export interface Treatment {
   name: string;
   type: 'comprime' | 'gelule' | 'comprime_sublingual' | 'comprime_croquer' | 'poudre_orale' | 'sirop' | 'suspension_buvable' | 'solution_buvable' | 'granule' | 'creme' | 'pommade' | 'gel' | 'lotion' | 'collyre' | 'gouttes_auriculaires' | 'suppositoire' | 'spray_nasal' | 'inhalateur';
   dosage: number;
+  quantity?: number; // Fraction/quantité à prendre : 0.25, 0.5, 0.75, 1, 1.5, 2… (pour comprimés/gélules)
   unit: string; // mg, ml, %, etc.
   color: string; // couleur pour l'icône
   icon: string; // nom de l'icône

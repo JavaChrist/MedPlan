@@ -1,6 +1,35 @@
 import { Treatment } from '../types';
 
 /**
+ * Détecte si l'on est sur iOS (iPhone / iPad)
+ */
+export function isIOS(): boolean {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+/**
+ * Détecte si l'app est installée en mode PWA standalone (Add to Home Screen)
+ */
+export function isPWAInstalled(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true
+  );
+}
+
+/**
+ * Vérifie si les notifications Web Push sont supportées sur cet appareil/navigateur.
+ * Sur iOS < 16.4 ou en navigateur Safari sans installation PWA → non supporté.
+ */
+export function isNotificationSupported(): boolean {
+  if (!('Notification' in window)) return false;
+  if (!('serviceWorker' in navigator)) return false;
+  // Sur iOS, les notifications ne fonctionnent que depuis iOS 16.4 en mode PWA installée
+  if (isIOS() && !isPWAInstalled()) return false;
+  return true;
+}
+
+/**
  * Service de gestion des notifications locales PWA
  */
 export class NotificationService {
@@ -18,233 +47,139 @@ export class NotificationService {
     return NotificationService.instance;
   }
 
-  /**
-   * Initialise le service worker
-   */
   private async initializeServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
         this.serviceWorkerRegistration = await navigator.serviceWorker.register('/service-worker.js');
-        console.log('Service Worker enregistré:', this.serviceWorkerRegistration);
-
-        // Écouter les messages du service worker
         this.setupMessageListener();
       } catch (error) {
         console.error('Erreur enregistrement Service Worker:', error);
       }
-    } else {
-      console.warn('Service Worker non supporté dans ce navigateur');
     }
   }
 
-  /**
-   * Écoute les messages du service worker
-   */
   private setupMessageListener() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
         const { type, data } = event.data;
-
-        switch (type) {
-          case 'mark-treatment-taken':
-            this.handleMarkTreatmentTaken(data);
-            break;
-          default:
-            console.log('Message non géré depuis le SW:', type);
+        if (type === 'mark-treatment-taken') {
+          window.dispatchEvent(new CustomEvent('treatment-taken-from-notification', { detail: data }));
         }
       });
     }
   }
 
   /**
-   * Gère le marquage d'un traitement comme pris depuis une notification
+   * Demande la permission pour les notifications.
+   * Retourne : 'granted' | 'denied' | 'unsupported' | 'needs-install'
    */
-  private handleMarkTreatmentTaken(data: any) {
-    // Envoyer un événement personnalisé que Home.tsx peut écouter
-    window.dispatchEvent(new CustomEvent('treatment-taken-from-notification', {
-      detail: data
-    }));
-  }
-
-  /**
-   * Demande la permission pour les notifications
-   */
-  public async requestNotificationPermission(): Promise<boolean> {
-    if (!('Notification' in window)) {
-      console.warn('Ce navigateur ne supporte pas les notifications');
-      return false;
+  public async requestNotificationPermission(): Promise<'granted' | 'denied' | 'unsupported' | 'needs-install'> {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      return 'unsupported';
     }
 
-    // Si déjà accordée
-    if (Notification.permission === 'granted') {
-      return true;
+    // iOS : doit être installée en PWA
+    if (isIOS() && !isPWAInstalled()) {
+      return 'needs-install';
     }
 
-    // Si refusée définitivement
-    if (Notification.permission === 'denied') {
-      console.warn('Notifications refusées par l\'utilisateur');
-      return false;
-    }
+    if (Notification.permission === 'granted') return 'granted';
+    if (Notification.permission === 'denied') return 'denied';
 
-    // Demander la permission
     try {
       const permission = await Notification.requestPermission();
-      return permission === 'granted';
-    } catch (error) {
-      console.error('Erreur demande permission:', error);
-      return false;
+      return permission === 'granted' ? 'granted' : 'denied';
+    } catch {
+      return 'denied';
     }
   }
 
-  /**
-   * Vérifie si les notifications sont supportées et autorisées
-   */
   public areNotificationsEnabled(): boolean {
-    return 'Notification' in window && Notification.permission === 'granted';
+    return isNotificationSupported() && Notification.permission === 'granted';
+  }
+
+  public getPermissionStatus(): 'granted' | 'denied' | 'default' | 'unsupported' | 'needs-install' {
+    if (!('Notification' in window)) return 'unsupported';
+    if (isIOS() && !isPWAInstalled()) return 'needs-install';
+    return Notification.permission;
   }
 
   /**
-   * Planifie les notifications pour un traitement
+   * Planifie les notifications pour un traitement via le Service Worker
    */
   public async scheduleNotification(treatment: Treatment): Promise<void> {
-    if (!this.areNotificationsEnabled()) {
-      console.warn('Notifications non autorisées');
-      return;
-    }
+    if (!this.areNotificationsEnabled()) return;
 
-    if (!this.serviceWorkerRegistration || !navigator.serviceWorker.controller) {
-      console.warn('Service Worker non disponible');
-      return;
-    }
+    const reg = this.serviceWorkerRegistration ?? await navigator.serviceWorker.ready;
+    const controller = reg?.active ?? navigator.serviceWorker.controller;
+    if (!controller) return;
 
-    // Ne planifier que les traitements actifs avec horaires
-    if (!treatment.isActive || !treatment.schedules || treatment.schedules.length === 0) {
-      return;
-    }
+    if (!treatment.isActive || !treatment.schedules?.length) return;
 
-    // Exclure les traitements "au besoin"
-    const hasScheduledTimes = treatment.schedules.some(schedule =>
-      schedule.frequency !== 'as_needed' && schedule.time
+    const hasScheduledTimes = treatment.schedules.some(
+      s => s.frequency !== 'as_needed' && s.time
     );
-
-    if (!hasScheduledTimes) {
-      return;
-    }
+    if (!hasScheduledTimes) return;
 
     try {
-      // Envoyer au service worker
-      navigator.serviceWorker.controller.postMessage({
+      controller.postMessage({
         type: 'schedule-notifications',
         data: {
           id: treatment.id,
           name: treatment.name,
           dosage: treatment.dosage,
           unit: treatment.unit,
-          schedules: treatment.schedules
-        }
+          schedules: treatment.schedules,
+        },
       });
-
-      console.log('Notifications planifiées pour:', treatment.name);
     } catch (error) {
       console.error('Erreur planification notification:', error);
     }
   }
 
-  /**
-   * Planifie les notifications pour plusieurs traitements
-   */
   public async scheduleMultipleNotifications(treatments: Treatment[]): Promise<void> {
-    const enabledTreatments = treatments.filter(t =>
-      t.isActive &&
-      t.schedules &&
-      t.schedules.length > 0 &&
-      t.schedules.some(s => s.frequency !== 'as_needed')
+    const enabled = treatments.filter(
+      t => t.isActive && t.schedules?.length && t.schedules.some(s => s.frequency !== 'as_needed')
     );
-
-    console.log(`Planification de ${enabledTreatments.length} traitements avec notifications`);
-
-    // Planifier chaque traitement
-    for (const treatment of enabledTreatments) {
-      await this.scheduleNotification(treatment);
-      // Petit délai pour éviter de surcharger le service worker
-      await new Promise(resolve => setTimeout(resolve, 100));
+    for (const t of enabled) {
+      await this.scheduleNotification(t);
+      await new Promise(r => setTimeout(r, 100));
     }
   }
 
-  /**
-   * Annule les notifications pour un traitement
-   */
   public async cancelNotifications(treatmentId: string): Promise<void> {
-    if (!navigator.serviceWorker.controller) {
-      console.warn('Service Worker non disponible');
-      return;
-    }
-
+    const reg = this.serviceWorkerRegistration ?? await navigator.serviceWorker.ready;
+    const controller = reg?.active ?? navigator.serviceWorker.controller;
+    if (!controller) return;
     try {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'cancel-notifications',
-        data: { treatmentId }
-      });
-
-      console.log('Notifications annulées pour:', treatmentId);
+      controller.postMessage({ type: 'cancel-notifications', data: { treatmentId } });
     } catch (error) {
       console.error('Erreur annulation notification:', error);
     }
   }
 
   /**
-   * Marque une notification comme traitée
-   */
-  public async markNotificationTaken(notificationId: string): Promise<void> {
-    if (!navigator.serviceWorker.controller) {
-      return;
-    }
-
-    try {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'mark-taken',
-        data: { notificationId }
-      });
-    } catch (error) {
-      console.error('Erreur marquage notification:', error);
-    }
-  }
-
-  /**
-   * Teste les notifications (pour développement)
+   * Envoie une notification de test immédiate via le Service Worker
+   * (compatible iOS PWA)
    */
   public async testNotification(): Promise<void> {
-    if (!this.areNotificationsEnabled()) {
-      console.warn('Notifications non autorisées');
-      return;
-    }
-
+    if (!this.areNotificationsEnabled()) return;
     try {
-      new Notification('🧪 Test MedPlan', {
+      const reg = this.serviceWorkerRegistration ?? await navigator.serviceWorker.ready;
+      await reg.showNotification('MedPlan', {
         body: 'Les notifications fonctionnent correctement !',
-        icon: '/logo192.png',
-        tag: 'test-notification'
+        icon: '/apple-touch-icon.png',
+        badge: '/apple-touch-icon.png',
+        tag: 'test-notification',
       });
     } catch (error) {
       console.error('Erreur test notification:', error);
     }
   }
-
-  /**
-   * Obtient le statut des permissions
-   */
-  public getPermissionStatus(): 'granted' | 'denied' | 'default' | 'unsupported' {
-    if (!('Notification' in window)) {
-      return 'unsupported';
-    }
-    return Notification.permission;
-  }
 }
 
-// Exportation de l'instance singleton et des fonctions utilitaires
 export const notificationService = NotificationService.getInstance();
 
-// Fonctions helpers pour compatibilité
 export const requestNotificationPermission = () =>
   notificationService.requestNotificationPermission();
 
@@ -261,4 +196,7 @@ export const areNotificationsEnabled = () =>
   notificationService.areNotificationsEnabled();
 
 export const testNotification = () =>
-  notificationService.testNotification(); 
+  notificationService.testNotification();
+
+export const getPermissionStatus = () =>
+  notificationService.getPermissionStatus();

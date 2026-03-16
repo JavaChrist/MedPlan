@@ -15,6 +15,7 @@ interface FormData {
   type: 'comprime' | 'gelule' | 'comprime_sublingual' | 'comprime_croquer' | 'poudre_orale' | 'sirop' | 'suspension_buvable' | 'solution_buvable' | 'granule' | 'creme' | 'pommade' | 'gel' | 'lotion' | 'collyre' | 'gouttes_auriculaires' | 'suppositoire' | 'spray_nasal' | 'inhalateur';
   visualForm: string;
   dosage: number;
+  quantity: number; // fraction/quantité de comprimé : 0.25, 0.5, 0.75, 1, 1.5, 2…
   unit: string;
   frequency: 'daily' | 'specific_days' | 'every_x_days' | 'cycle' | 'as_needed';
   schedules: string[];
@@ -47,11 +48,12 @@ export default function AddTreatment() {
     type: 'comprime',
     visualForm: 'comprime-rond',
     dosage: 0,
+    quantity: 1,
     unit: 'mg',
     frequency: 'daily',
     schedules: ['08:00'],
     startDate: new Date().toISOString().split('T')[0],
-    selectedDays: [1, 2, 3, 4, 5], // Lundi à Vendredi par défaut
+    selectedDays: [1, 2, 3, 4, 5],
     intervalDays: 2,
     cycleConfig: { onDays: 21, offDays: 7 }
   });
@@ -117,6 +119,7 @@ export default function AddTreatment() {
           type: (treatmentToEdit.type as any) || 'comprime',
           visualForm: (treatmentToEdit.icon as any) || 'comprime-rond',
           dosage: Number(treatmentToEdit.dosage) || 0,
+          quantity: Number((treatmentToEdit as any).quantity) || 1,
           unit: treatmentToEdit.unit || 'mg',
           frequency: freq,
           schedules: times.length > 0 ? times : ['08:00'],
@@ -211,6 +214,34 @@ export default function AddTreatment() {
     { id: 6, label: 'S', fullName: 'Samedi' }
   ];
 
+  // Types de médicaments pour lesquels une quantité fractionnée a du sens
+  const isFractionnableType = (type: string) =>
+    ['comprime', 'gelule', 'comprime_sublingual', 'comprime_croquer', 'suppositoire'].includes(type);
+
+  // Afficher une quantité sous forme lisible : 0.25 → "¼", 0.5 → "½", etc.
+  const formatQuantity = (q: number, type: string): string => {
+    const label = type === 'gelule' ? 'gélule' : type === 'suppositoire' ? 'suppositoire' : 'comprimé';
+    const plural = q > 1 ? 's' : '';
+    if (q === 0.25) return `¼ ${label}`;
+    if (q === 0.5)  return `½ ${label}`;
+    if (q === 0.75) return `¾ ${label}`;
+    if (q === 1)    return `1 ${label}`;
+    if (q === 1.5)  return `1½ ${label}`;
+    if (q === 2)    return `2 ${label}${plural}`;
+    if (q === 3)    return `3 ${label}${plural}`;
+    return `${q} ${label}${plural}`;
+  };
+
+  const fractionOptions = [
+    { value: 0.25, label: '¼' },
+    { value: 0.5,  label: '½' },
+    { value: 0.75, label: '¾' },
+    { value: 1,    label: '1' },
+    { value: 1.5,  label: '1½' },
+    { value: 2,    label: '2' },
+    { value: 3,    label: '3' },
+  ];
+
   const updateFormData = (updates: Partial<FormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
   };
@@ -302,6 +333,7 @@ export default function AddTreatment() {
           name: formData.name,
           type: formData.type as any,
           dosage: formData.dosage,
+          quantity: formData.quantity,
           unit: formData.unit,
           icon: formData.visualForm,
           schedules,
@@ -319,6 +351,7 @@ export default function AddTreatment() {
           name: formData.name,
           type: formData.type,
           dosage: formData.dosage,
+          quantity: formData.quantity,
           unit: formData.unit,
           color: '#1DA1F2',
           icon: formData.visualForm,
@@ -622,8 +655,34 @@ export default function AddTreatment() {
                 </select>
               </div>
 
+              {/* Sélecteur de quantité — uniquement pour comprimés / gélules */}
+              {isFractionnableType(formData.type) && (
+                <div className="space-y-3">
+                  <p className="text-center text-white font-medium">Quantité à prendre par prise</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {fractionOptions.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => updateFormData({ quantity: opt.value })}
+                        className={`w-14 h-14 rounded-xl text-lg font-bold transition-all ${
+                          formData.quantity === opt.value
+                            ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-110'
+                            : 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-center text-blue-300 font-medium text-sm">
+                    {formatQuantity(formData.quantity, formData.type)}
+                    {formData.dosage > 0 && ` · ${(formData.quantity * formData.dosage).toFixed(2).replace(/\.?0+$/, '')} ${formData.unit}`}
+                  </p>
+                </div>
+              )}
+
               {/* Aperçu de la dose */}
-              {formData.dosage > 0 && (
+              {formData.dosage > 0 && !isFractionnableType(formData.type) && (
                 <div className="text-center mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
                   <p className="text-gray-400 text-sm mb-1">Dose par prise</p>
                   <p className="text-white text-lg font-semibold">
@@ -700,8 +759,8 @@ export default function AddTreatment() {
 
               {formData.frequency === 'every_x_days' && (
                 <div className="mb-8">
-                  <div className="flex items-center justify-center space-x-3">
-                    <span className="text-white">Prendre ce traitement tous les</span>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <span className="text-white text-sm">Prendre ce traitement tous les</span>
                     <div className="flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2">
                       <button
                         onClick={decrementInterval}
@@ -831,24 +890,67 @@ export default function AddTreatment() {
                     className="w-full p-3 rounded-lg text-white bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   />
                 </div>
+
+                {/* Raccourcis en semaines */}
                 <div>
-                  <div className="flex items-center space-x-3 mb-2">
-                    <input
-                      type="checkbox"
-                      id="hasEndDate"
-                      checked={!!formData.endDate}
-                      onChange={(e) => updateFormData({ endDate: e.target.checked ? new Date().toISOString().split('T')[0] : undefined })}
-                      className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
-                    />
-                    <label htmlFor="hasEndDate" className="text-white">Date de fin</label>
+                  <label className="block text-white mb-2">Durée</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      { label: '1 sem.', weeks: 1 },
+                      { label: '2 sem.', weeks: 2 },
+                      { label: '3 sem.', weeks: 3 },
+                      { label: '4 sem.', weeks: 4 },
+                      { label: '6 sem.', weeks: 6 },
+                      { label: '8 sem.', weeks: 8 },
+                      { label: '3 mois', weeks: 13 },
+                    ].map(({ label, weeks }) => {
+                      const start = new Date(formData.startDate);
+                      const expectedEnd = new Date(start);
+                      expectedEnd.setDate(start.getDate() + weeks * 7);
+                      const expectedStr = expectedEnd.toISOString().split('T')[0];
+                      const isActive = formData.endDate === expectedStr;
+                      return (
+                        <button
+                          key={weeks}
+                          onClick={() => updateFormData({ endDate: expectedStr })}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            isActive
+                              ? 'bg-blue-500 text-white ring-2 ring-blue-300'
+                              : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => updateFormData({ endDate: undefined })}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        !formData.endDate
+                          ? 'bg-blue-500 text-white ring-2 ring-blue-300'
+                          : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700'
+                      }`}
+                    >
+                      Sans fin
+                    </button>
                   </div>
-                  {formData.endDate && (
+
+                  {/* Date de fin manuelle */}
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-1">Ou choisir une date de fin précise</label>
                     <input
                       type="date"
-                      value={formData.endDate}
-                      onChange={(e) => updateFormData({ endDate: e.target.value })}
+                      value={formData.endDate || ''}
+                      min={formData.startDate}
+                      onChange={(e) => updateFormData({ endDate: e.target.value || undefined })}
                       className="w-full p-3 rounded-lg text-white bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                     />
+                  </div>
+
+                  {formData.endDate && (
+                    <p className="text-blue-300 text-sm mt-2 text-center">
+                      Fin le {new Date(formData.endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
                   )}
                 </div>
               </div>
@@ -924,7 +1026,15 @@ export default function AddTreatment() {
                 {/* Dosage */}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">Dosage :</span>
-                  <span className="text-white font-semibold">{formData.dosage} {formData.unit}</span>
+                  <div className="text-right">
+                    <span className="text-white font-semibold">{formData.dosage} {formData.unit}</span>
+                    {isFractionnableType(formData.type) && (
+                      <p className="text-blue-300 text-sm mt-0.5">
+                        {formatQuantity(formData.quantity, formData.type)}
+                        {formData.dosage > 0 && ` · ${(formData.quantity * formData.dosage).toFixed(2).replace(/\.?0+$/, '')} ${formData.unit}`}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Fréquence */}
@@ -1050,7 +1160,7 @@ export default function AddTreatment() {
       </div>
 
       {/* Footer Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 p-6" style={{ backgroundColor: '#000' }}>
+      <div className="fixed bottom-0 left-0 right-0 px-6 pt-4" style={{ backgroundColor: '#000', paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}>
         <div className="flex space-x-3">
           {currentStep === 2 && (
             <button
